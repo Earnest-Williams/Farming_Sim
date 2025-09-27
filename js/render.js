@@ -53,7 +53,7 @@ export function flushLine(chars, styles) {
   return html;
 }
 
-export function renderColored(world) {
+export function renderColored(world, debugState = {}) {
   const targetX = clamp(world.farmer.x - SCREEN_W / 2, 0, CONFIG.WORLD.W - SCREEN_W);
   const targetY = clamp(world.farmer.y - SCREEN_H / 2, 0, CONFIG.WORLD.H - SCREEN_H);
   const shouldFollow = world.snapCamera || world.camera.follow !== false;
@@ -182,7 +182,7 @@ export function renderColored(world) {
     }
   }
   drawFarmer(buf, styleBuf, world, camX, camY);
-  debugHUD(buf, styleBuf, world);
+  debugHUD(buf, styleBuf, world, debugState);
   return { buf, styleBuf };
 }
 
@@ -199,10 +199,14 @@ function drawFarmer(buf, styleBuf, world, camX, camY) {
   }
 }
 
-function debugHUD(buf, styleBuf, world) {
+function debugHUD(buf, styleBuf, world, { speed = 0, accMin = 0 } = {}) {
   const minute = world.calendar.minute ?? 0;
   const daylight = world.daylight || { workStart: 0, workEnd: 0 };
   const slots = (world.farmer?.activeWork ?? []).map(id => id ?? '-').join(',');
-  const line = `m=${minute} ws=${daylight.workStart} we=${daylight.workEnd} slots=[${slots}] task=${world.farmer?.task ?? ''}`;
+  const atX = world.farmer?.x ?? 0;
+  const atY = world.farmer?.y ?? 0;
+  const task = world.farmer?.task ?? '';
+  const line = `m=${minute} ws=${daylight.workStart} we=${daylight.workEnd} slots=[${slots}] at=(${atX},${atY}) ` +
+    `speed=${speed.toFixed(2)} acc=${accMin.toFixed(2)} task=${task}`;
   label(buf, styleBuf, 1, 0, line, SID.HUD_TEXT);
 }
