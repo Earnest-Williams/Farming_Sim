@@ -28,12 +28,14 @@ import {
   processFarmerMinute,
   syncFarmerToActive,
   hasActiveWork,
+  sendFarmerHome,
 } from './tasks.js';
 import { advisorExecute, reprioritiseByVPM, updateKPIs } from './advisor.js';
 import { attachPastureIfNeeded } from './world.js';
 import { rowGrowthMultiplier } from './state.js';
 import { autosave } from './persistence.js';
 import { MINUTES_PER_DAY, computeDaylightByIndex, dayIndex } from './time.js';
+import { assertNoWorkOutsideWindow } from './tests/invariants.js';
 
 function chooseFlex(world, option) {
   world.flexChoice = option;
@@ -212,16 +214,19 @@ export function stepOneMinute(world) {
 
   if (minute >= daylight.workStart && minute <= daylight.workEnd) {
     tickWorkMinute(world);
+    if (!hasActiveWork(world)) planDay(world);
+  } else if (!world.farmer.queue?.length) {
+    sendFarmerHome(world);
   }
 
-  if (!hasActiveWork(world)) planDay(world);
-
-  world.calendar.minute = (minute + 1);
+  world.calendar.minute = minute + 1;
   if (world.calendar.minute >= MINUTES_PER_DAY) {
     world.calendar.minute = 0;
     dailyTurn(world);
     planDay(world);
   }
+
+  assertNoWorkOutsideWindow(world);
 }
 
 export function pastureRegrow(world) {

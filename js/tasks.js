@@ -10,38 +10,51 @@ import {
   MINUTES_PER_DAY,
 } from './constants.js';
 import { applyTaskEffects } from './state.js';
+import { assertCompletionNotPremature } from './tests/invariants.js';
 
 const SPEEDS = { walk_m_per_min: 70, cart_m_per_min: 120 };
 const OVERHEAD = { load_per_crate_min: 1.2, market_transaction_min: 8 };
 
+const REQUIRES_PRESENCE = new Set([
+  TASK_KINDS.PloughPlot,
+  TASK_KINDS.HarrowPlot,
+  TASK_KINDS.Sow,
+  TASK_KINDS.DrillPlot,
+  TASK_KINDS.HoeRow,
+  TASK_KINDS.HarvestParcel,
+  TASK_KINDS.CutCloverHay,
+  TASK_KINDS.CartHay,
+  TASK_KINDS.CartSheaves,
+  TASK_KINDS.CartToMarket,
+  TASK_KINDS.Repair,
+]);
+
 export const CREW_SLOTS = CONST_CREW_SLOTS;
 export const LABOUR_DAY_MIN = CONST_LABOUR_DAY_MIN;
 
-function distanceMeters(world, a = { x: 0, y: 0 }, b = { x: 0, y: 0 }) {
-  const scale = world?.grid?.metersPerCell ?? 1;
-  return Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0)) * scale;
+function metersPerCell(world) {
+  return world?.grid?.metersPerCell ?? 1;
 }
 
-function estimateMinutes(world, spec) {
-  if (!spec) return 30;
+function distM(world, a = { x: 0, y: 0 }, b = { x: 0, y: 0 }) {
+  return Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0)) * metersPerCell(world);
+}
+
+function estimateMinutes(world, spec = {}) {
   if (spec.kind === TASK_KINDS.CartToMarket) {
     const farmhouse = world.farmhouse ?? { x: 0, y: 0 };
     const yard = world.locations?.yard ?? farmhouse;
     const marketDefault = { x: yard.x + 200, y: yard.y + 50 };
     const market = world.locations?.market ?? marketDefault;
-    const dGo = distanceMeters(world, yard, market);
-    const dBack = distanceMeters(world, market, yard);
-    const hasCart = Boolean(world.assets?.oxCart);
-    const v = hasCart ? SPEEDS.cart_m_per_min : SPEEDS.walk_m_per_min;
-    const travel = (dGo + dBack) / (v || SPEEDS.walk_m_per_min);
-
+    const distance = distM(world, yard, market);
+    const speed = world.assets?.oxCart ? SPEEDS.cart_m_per_min : SPEEDS.walk_m_per_min;
+    const travel = (distance * 2) / (speed || SPEEDS.walk_m_per_min);
     const payload = spec.payload;
     const crates = Array.isArray(payload)
       ? payload.reduce((acc, item) => acc + (item.qty ?? 1), 0)
-      : (payload?.crates ?? 1);
+      : (payload?.crates ?? Math.max(1, world.store?.cratesToSell ?? 1));
     const handling = crates * OVERHEAD.load_per_crate_min + OVERHEAD.market_transaction_min;
-
-    return travel + handling;
+    return Math.max(5, Math.round(travel + handling));
   }
   if (spec.parcelId != null) {
     const parcel = world.parcels?.[spec.parcelId];
@@ -51,15 +64,12 @@ function estimateMinutes(world, spec) {
 }
 
 export function makeTask(world, spec) {
-  const rawEstimate = spec.kind === TASK_KINDS.CartToMarket
-    ? estimateMinutes(world, spec)
-    : (spec.estMin ?? estimateMinutes(world, spec));
-  const estMin = Math.max(1, Math.round(rawEstimate || 1));
+  const estMin = Math.max(1, Math.round(spec.estMin ?? estimateMinutes(world, spec)));
   return {
     id: world.nextTaskId++,
     kind: spec.kind,
     parcelId: spec.parcelId ?? null,
-    payload: spec.payload || null,
+    payload: spec.payload ?? null,
     latestDay: spec.latestDay ?? 20,
     estMin,
     doneMin: 0,
@@ -152,10 +162,8 @@ export function canStartTask(world, task) {
       return !!world.stackReady && Object.values(world.storeSheaves || {}).some(v => v > 0);
     case TASK_KINDS.CartToMarket: {
       const store = world.store || {};
-      const haveGoods = Array.isArray(task.payload)
-        ? task.payload.some(item => (item?.qty ?? 0) > 0)
-        : Object.values(store).some(value => typeof value === 'number' && value > 0);
-      if (!haveGoods) return false;
+      const goods = Object.values(store).some(value => typeof value === 'number' && value > 0);
+      if (!goods) return false;
       const minute = world.calendar.minute ?? 0;
       const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
       if (minute < daylight.workStart || minute > daylight.workEnd) return false;
@@ -218,21 +226,37 @@ export function planDayMonthly(world) {
         world.farmer.activeWork[i] = task.id;
         foundTask = true;
         break;
-      } else {
-        world.tasks.month.queued.push(task);
       }
+      world.tasks.month.queued.push(task);
     }
     if (!foundTask) break;
   }
 }
 
 export function completeTask(world, task, slotIndex) {
+  if ((task.doneMin ?? 0) < (task.estMin ?? 1)) {
+    console.warn('Illegal completion prevented', task);
+    return;
+  }
+  task._completedAtMinute = world.calendar.minute ?? 0;
+  assertCompletionNotPremature(world, task);
   task.status = 'done';
   applyTaskEffects(world, task);
   world.tasks.month.active = world.tasks.month.active.filter(t => t.id !== task.id);
   world.tasks.month.done.push(task);
   world.farmer.activeWork[slotIndex] = null;
+  syncFarmerToActive(world);
   log(world, `Completed task: ${task.kind}`);
+}
+
+function isFarmerAtParcel(world, parcelId, tolerance = 2) {
+  if (parcelId == null) return true;
+  const parcel = world.parcels?.[parcelId];
+  if (!parcel) return false;
+  const targetX = parcel.x + 2;
+  const targetY = parcel.y + 2;
+  return Math.abs((world.farmer?.x ?? 0) - targetX) <= tolerance &&
+    Math.abs((world.farmer?.y ?? 0) - targetY) <= tolerance;
 }
 
 export function tickWorkMinute(world) {
@@ -243,40 +267,41 @@ export function tickWorkMinute(world) {
     return;
   }
 
-  let needsTopUp = false;
-  let needsSync = false;
+  let progressed = false;
   for (let s = 0; s < CREW_SLOTS; s++) {
     const id = world.farmer.activeWork[s];
     if (id == null) continue;
-    const t = findTaskById(world, id);
-    if (!t) {
+    const task = findTaskById(world, id);
+    if (!task) {
       world.farmer.activeWork[s] = null;
-      needsTopUp = true;
-      needsSync = true;
+      progressed = true;
       continue;
     }
-    t.doneMin += 1;
+    if (REQUIRES_PRESENCE.has(task.kind) && !isFarmerAtParcel(world, task.parcelId)) {
+      continue;
+    }
+    task.doneMin = Math.min(task.estMin, (task.doneMin ?? 0) + 1);
     world.labour.usedMin += 1;
-    if (maybeToolBreak(world, t)) {
+    if (maybeToolBreak(world, task)) {
       // optional stochastic repair handled inside maybeToolBreak
     }
-    if (t.doneMin >= t.estMin) {
-      completeTask(world, t, s);
-      needsTopUp = true;
-      needsSync = true;
+    if (task.doneMin >= task.estMin) {
+      completeTask(world, task, s);
+      progressed = true;
     }
   }
 
-  if (needsTopUp) {
-    if (topUpActiveSlots(world)) needsSync = true;
+  if (topUpActiveSlots(world)) {
+    syncFarmerToActive(world);
+  } else if (progressed) {
+    syncFarmerToActive(world);
   }
-  if (needsSync) syncFarmerToActive(world);
 }
 
 function topUpActiveSlots(world) {
   let assigned = false;
   for (let s = 0; s < CREW_SLOTS; s++) {
-    if (world.farmer.activeWork[s]) continue;
+    if (world.farmer.activeWork[s] != null) continue;
 
     let task;
     let found = false;
@@ -331,6 +356,12 @@ export function hasActiveWork(world) {
   return world?.farmer?.activeWork?.some(Boolean) ?? false;
 }
 
+export function sendFarmerHome(world) {
+  const home = world.farmhouse ?? world.locations?.yard ?? { x: 8, y: 8 };
+  world.farmer.queue = [{ type: 'move', x: home.x, y: home.y }];
+  world.farmer.task = 'Walking home';
+}
+
 export function syncFarmerToActive(world) {
   const farmer = world.farmer;
   if (!farmer) return;
@@ -339,60 +370,44 @@ export function syncFarmerToActive(world) {
   if (!firstActiveId) {
     farmer.task = world.tasks.month.queued.length ? 'Waiting for conditions' : 'Idle';
     farmer.queue = [];
-    farmer.moveTarget = null;
-    farmer.path = [];
     return;
   }
 
   const activeTask = world.tasks.month.active.find(t => t.id === firstActiveId);
   if (!activeTask) {
-    farmer.task = 'Overseeing non-field task';
     farmer.queue = [];
-    farmer.moveTarget = null;
-    farmer.path = [];
+    farmer.task = 'Syncing…';
     return;
   }
 
   if (activeTask.kind === TASK_KINDS.CartToMarket) {
-    const farmhouse = world.farmhouse ?? { x: farmer.x, y: farmer.y };
-    const yard = world.locations?.yard ?? farmhouse;
-    const marketDefault = { x: yard.x + 200, y: yard.y + 50 };
-    const market = world.locations?.market ?? marketDefault;
+    const yard = world.locations?.yard ?? world.farmhouse ?? { x: farmer.x, y: farmer.y };
+    const market = world.locations?.market ?? { x: yard.x + 200, y: yard.y + 50 };
     farmer.queue = [
       { type: 'move', x: yard.x, y: yard.y },
       { type: 'move', x: market.x, y: market.y },
       { type: 'move', x: yard.x, y: yard.y },
     ];
-    farmer.moveTarget = null;
-    farmer.path = [];
     farmer.task = 'Cart to Market';
     return;
   }
 
-  if (activeTask.parcelId == null) {
-    const farmhouse = world.farmhouse ?? { x: farmer.x, y: farmer.y };
-    const yard = world.locations?.yard ?? farmhouse;
-    farmer.queue = [{ type: 'move', x: yard.x, y: yard.y }];
-    farmer.moveTarget = null;
-    farmer.path = [];
-    farmer.task = `Working: ${activeTask.kind}`;
+  if (activeTask.parcelId != null) {
+    const parcel = world.parcels?.[activeTask.parcelId];
+    if (!parcel) {
+      farmer.queue = [];
+      farmer.task = `Missing parcel ${activeTask.parcelId}`;
+      return;
+    }
+    farmer.queue = [{ type: 'move', x: parcel.x + 2, y: parcel.y + 2 }];
+    const label = parcel.name ?? parcel.key;
+    farmer.task = `Overseeing: ${activeTask.kind} @ ${label}`;
     return;
   }
 
-  const parcel = world.parcels[activeTask.parcelId];
-  if (!parcel) {
-    farmer.queue = [];
-    farmer.moveTarget = null;
-    farmer.path = [];
-    farmer.task = `Missing parcel ${activeTask.parcelId}`;
-    return;
-  }
-
-  farmer.queue = [{ type: 'move', x: parcel.x + 2, y: parcel.y + 2 }];
-  farmer.moveTarget = null;
-  farmer.path = [];
-  const parcelName = parcel.name ?? parcel.key;
-  farmer.task = `Overseeing: ${activeTask.kind} @ ${parcelName}`;
+  const yard = world.locations?.yard ?? world.farmhouse ?? { x: farmer.x, y: farmer.y };
+  farmer.queue = [{ type: 'move', x: yard.x, y: yard.y }];
+  farmer.task = `Working: ${activeTask.kind}`;
 }
 
 export function processFarmerMinute(world) {

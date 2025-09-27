@@ -5,10 +5,13 @@ import { getSeedFromURL, clamp, log } from './utils.js';
 import { MINUTES_PER_DAY, CONFIG, MONTH_NAMES, DAYS_PER_MONTH } from './constants.js';
 import { renderColored, flushLine } from './render.js';
 import { advisorHud } from './advisor.js';
-import { saveToLocalStorage, loadFromLocalStorage, downloadSave, autosave } from './persistence.js';
+import { saveToLocalStorage, loadFromLocalStorage, downloadSave } from './persistence.js';
+import { minutesToAdvance, getSpeed, setSpeed } from './timeflow.js';
+import { initSpeedControls, syncSpeedControls } from './ui/speed.js';
 
 let world;
-const TIMECTRL = { mode: 'normal', minutesPerFrame: 10, ff: { daysRemaining: 0, stopOnAlerts: true, report: [] } };
+let lastFrameTime = null;
+let accumulatedMinutes = 0;
 const DEBUG = { showParcels: false, showRows: false, showSoilBars: true, showTaskQueue: false, showWorkability: true, showKPI: false };
 
 let charSize = { width: 8, height: 17 };
@@ -68,16 +71,6 @@ function formatMinutes(minutes) {
   return `${rounded} min (${hours} h)`;
 }
 
-function formatTimeMode(ctrl) {
-  if (!ctrl) return 'Normal';
-  if (ctrl.mode === 'scaled') return `Scaled x${ctrl.minutesPerFrame}`;
-  if (ctrl.mode === 'ff') {
-    const remaining = ctrl.ff?.daysRemaining ?? 0;
-    return `Fast-forward (${remaining} day${remaining === 1 ? '' : 's'} remaining)`;
-  }
-  return 'Normal';
-}
-
 function titleCase(str) {
   if (!str) return '';
   return str
@@ -113,7 +106,7 @@ function renderOverviewPanel(w) {
         <div><dt>Dry Spell</dt><dd>${escapeHtml(dryLabel)}</dd></div>
         <div><dt>Sunlight</dt><dd>${formatTime(daylight.sunrise)} – ${formatTime(daylight.sunset)}</dd></div>
         <div><dt>Flex Field</dt><dd>${escapeHtml(w.flexChoice || 'Pending')}</dd></div>
-        <div><dt>Time Control</dt><dd>${escapeHtml(formatTimeMode(w.timeCtrl))}</dd></div>
+        <div><dt>Speed</dt><dd>${getSpeed().toFixed(2)}× min/s</dd></div>
       </dl>
       <h2>Labour</h2>
       <dl class="detail-list">
@@ -243,9 +236,9 @@ function renderControlsPanel() {
           <p><span class="kbd">C</span> or the Follow Farmer button recenters the camera and locks onto the farmer.</p>
         </li>
         <li>
-          <strong>Time</strong>
-          <p><span class="kbd">Space</span> pauses or resumes. <span class="kbd">,</span> advances one minute, <span class="kbd">.</span> advances ten, and <span class="kbd">N</span> skips to day end.</p>
-          <p><span class="kbd">1</span>/<span class="kbd">2</span>/<span class="kbd">3</span> adjust speed; <span class="kbd">4</span> fast-forwards five days (stops on alerts).</p>
+      <strong>Time</strong>
+          <p>The speed slider in the lower-left sets the pace. <span class="kbd">Space</span> toggles pause, <span class="kbd">,</span> advances one minute, <span class="kbd">.</span> advances ten, and <span class="kbd">N</span> skips to day end.</p>
+          <p><span class="kbd">1</span>–<span class="kbd">5</span> jump to preset speeds; the on-screen buttons offer the same choices plus a pause toggle.</p>
         </li>
         <li>
           <strong>Management</strong>
@@ -357,69 +350,42 @@ function syncUiAfterWorldChange({ forceCenter = false } = {}) {
   updateMessageStack();
 }
 
-function onFrame() {
+function resetFrameClock() {
+  lastFrameTime = performance.now();
+}
+
+function advanceMinutes(count) {
+  if (!world || count <= 0) return;
+  for (let i = 0; i < count; i++) stepOneMinute(world);
+  accumulatedMinutes = 0;
+  resetFrameClock();
+  draw();
+}
+
+function skipToDayEnd() {
   if (!world) return;
-  if (TIMECTRL.mode === 'normal') {
-    if (!world.paused) stepOneMinute(world);
-  } else if (TIMECTRL.mode === 'scaled') {
-    if (!world.paused) {
-      for (let i = 0; i < TIMECTRL.minutesPerFrame; i++) stepOneMinute(world);
-    }
-  } else if (TIMECTRL.mode === 'ff') {
-    runFastForwardFrame(world);
+  const remaining = Math.max(0, MINUTES_PER_DAY - (world.calendar.minute ?? 0));
+  advanceMinutes(remaining);
+}
+
+function onFrame(now) {
+  if (!world) {
+    requestAnimationFrame(onFrame);
+    return;
   }
+  if (lastFrameTime == null) lastFrameTime = now;
+  const dt = Math.max(0, now - lastFrameTime);
+  lastFrameTime = now;
+
+  accumulatedMinutes += minutesToAdvance(dt);
+  while (accumulatedMinutes >= 1) {
+    stepOneMinute(world);
+    accumulatedMinutes -= 1;
+  }
+
+  world.paused = getSpeed() === 0;
   draw();
   requestAnimationFrame(onFrame);
-}
-
-function setTimeMode(mode, minutesPerFrame = 10) {
-  TIMECTRL.mode = mode;
-  TIMECTRL.minutesPerFrame = minutesPerFrame;
-}
-
-function runFastForward(days, stopOnAlerts = true) {
-  TIMECTRL.mode = 'ff';
-  TIMECTRL.ff.daysRemaining = days;
-  TIMECTRL.ff.stopOnAlerts = stopOnAlerts;
-  TIMECTRL.ff.report = [];
-}
-
-function runOneDay(w) {
-  if (!w) return;
-  const startDay = w.calendar.day;
-  const startMonth = w.calendar.month;
-  const startYear = w.calendar.year;
-  let guard = 0;
-  do {
-    stepOneMinute(w);
-    guard++;
-  } while (
-    w.calendar.day === startDay &&
-    w.calendar.month === startMonth &&
-    w.calendar.year === startYear &&
-    guard <= MINUTES_PER_DAY + 5
-  );
-}
-
-function runFastForwardFrame(w) {
-  if (TIMECTRL.ff.daysRemaining <= 0) {
-    TIMECTRL.mode = 'normal';
-    return;
-  }
-  const hasAlerts = Array.isArray(w?.alerts) && w.alerts.length > 0;
-  const hasWarnings = !!(w?.kpi && Array.isArray(w.kpi.warnings) && w.kpi.warnings.length > 0);
-  if (TIMECTRL.ff.stopOnAlerts && (hasAlerts || hasWarnings)) {
-    TIMECTRL.mode = 'normal';
-    return;
-  }
-  const before = { year: w.calendar.year, month: w.calendar.month, day: w.calendar.day };
-  runOneDay(w);
-  if (w.calendar.year === before.year && w.calendar.month === before.month && w.calendar.day === before.day) {
-    // guard against staying in the same day (e.g., if time was mid-day)
-    runOneDay(w);
-  }
-  TIMECTRL.ff.report.push({ y: w.calendar.year, m: w.calendar.month, d: w.calendar.day, oats: w.store.oats, hay: w.store.hay, wheat: w.store.wheat, cash: w.cash });
-  TIMECTRL.ff.daysRemaining -= 1;
 }
 
 function drawDebugOverlay(w, canvas) {
@@ -487,7 +453,8 @@ function drawDebugOverlay(w, canvas) {
 }
 
 function draw() {
-  const { buf, styleBuf } = renderColored(world);
+  if (!world) return;
+  const { buf, styleBuf } = renderColored(world, { speed: getSpeed(), accMin: accumulatedMinutes });
   const lines = [];
   for (let y = 0; y < buf.length; y++) lines.push(flushLine(buf[y], styleBuf[y]));
   screenRef.innerHTML = lines.join('\n');
@@ -527,25 +494,17 @@ function attachSaveHelpers() {
 
 function bindKeyboard() {
   window.addEventListener('keydown', (e) => {
-    if (e.key === ' ') {
-      e.preventDefault();
-      world.paused = !world.paused;
-      draw();
-    } else if (e.key === ',') {
+    if (e.key === ',') {
       e.preventDefault();
       world.snapCamera = true;
-      stepOneMinute(world);
-      draw();
+      advanceMinutes(1);
       world.snapCamera = false;
     } else if (e.key === '.') {
       e.preventDefault();
-      for (let i = 0; i < 10; i++) stepOneMinute(world);
-      draw();
+      advanceMinutes(10);
     } else if (e.key === 'n' || e.key === 'N') {
       e.preventDefault();
-      const currentMinute = world.calendar.minute;
-      for (let i = 0; i < MINUTES_PER_DAY - currentMinute; i++) stepOneMinute(world);
-      draw();
+      skipToDayEnd();
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       if (e.shiftKey) {
@@ -556,7 +515,6 @@ function bindKeyboard() {
         location.href = url.toString();
       } else {
         world = makeWorld(getSeedFromURL());
-        world.timeCtrl = TIMECTRL;
         log(world, `Seed: ${world.seed}`);
         onNewMonth(world);
         planDay(world);
@@ -614,8 +572,10 @@ function bindKeyboard() {
         localStorage.setItem('farm_hc', document.body.classList.contains('hc') ? '1' : '0');
       } else {
         e.preventDefault();
-        world.paused = true;
-        log(world, 'Help: WASD/Arrows(pan) ,(1m) .(10m) N(1d) Space(pause) 1/2/3(speed) 4(ff) C(follow) P(menu) R(reset) Shift+R(new) Shift+H(contrast) Shift+L(buy) Alt+L(sell)');
+        setSpeed(0);
+        resetFrameClock();
+        log(world, 'Help: WASD/Arrows(pan) ,(1m) .(10m) N(1d) Space(pause) 1..5(speed presets) C(follow) P(menu) R(reset) Shift+R(new) Shift+H(contrast) Shift+L(buy) Alt+L(sell)');
+        syncSpeedControls();
         draw();
       }
     } else if (e.key === 'Escape') {
@@ -623,11 +583,7 @@ function bindKeyboard() {
         e.preventDefault();
         setDrawerOpen(false);
       }
-    } else if (e.key === '1') setTimeMode('normal');
-    else if (e.key === '2') setTimeMode('scaled', 10);
-    else if (e.key === '3') setTimeMode('scaled', 60);
-    else if (e.key === '4') runFastForward(5, true);
-    else if (e.key === 'F5') {
+    } else if (e.key === 'F5') {
       e.preventDefault();
       saveToLocalStorage(world);
     } else if (e.key === 'F9') {
@@ -636,7 +592,6 @@ function bindKeyboard() {
       if (loaded) {
         world = loaded;
         world.pathGrid = createPathfindingGrid();
-        world.timeCtrl = TIMECTRL;
       }
       planDay(world);
       syncUiAfterWorldChange();
@@ -650,7 +605,6 @@ function bindKeyboard() {
 function init() {
   const loaded = loadFromLocalStorage();
   world = loaded || makeWorld(getSeedFromURL());
-  world.timeCtrl = TIMECTRL;
   log(world, `Seed: ${world.seed}`);
   if (!loaded) onNewMonth(world);
   screenRef = document.getElementById('screen');
@@ -695,11 +649,13 @@ function init() {
   attachDebugToggles();
   attachSaveHelpers();
   bindKeyboard();
+  initSpeedControls();
   window.simulateMonths = simulateMonths;
   resizeOverlayCanvas();
   measureCharSize();
   syncUiAfterWorldChange({ forceCenter: true });
   draw();
+  resetFrameClock();
   requestAnimationFrame(onFrame);
 }
 

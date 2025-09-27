@@ -139,6 +139,47 @@ button:focus-visible {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
+#speed-controls {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  color: var(--dim);
+  background: rgba(15, 23, 42, 0.72);
+  padding: 8px 10px;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(15, 23, 42, 0.65);
+}
+
+#speed-controls label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--fg);
+}
+
+#speed-controls input[type="range"] {
+  width: 160px;
+  accent-color: var(--accent);
+}
+
+#speed-controls span {
+  margin-left: 8px;
+  color: var(--fg);
+}
+
+#speed-controls div {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+#speed-controls button {
+  flex: 1 1 auto;
+  padding: 4px 8px;
+}
+
 .drawer[hidden] {
   display: none !important;
 }
