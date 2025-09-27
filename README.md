@@ -5,7 +5,7 @@ A Norfolk-style farm planner tuned for an eight-month, twenty-day calendar. The 
 ## Purpose
 
 - **Calendar:** Eight named months (`I`–`VIII`), twenty days each, deterministic rollover.
-- **Labour:** Four adults working eight hours a day across twenty days → **640 labour-hours per month**.
+- **Labour:** A single farmer abstractly represents four adults working eight hours a day across twenty days → **640 labour-hours per month**.
 - **Fields:** Acre-scaled Norfolk rotation with closes, livestock placements, and store inventories.
 - **Planning:** Monthly priorities expand into concrete jobs with prerequisites and hour costs.
 - **Scheduling:** A monthly labour budget selects which jobs proceed; travel time is explicit.
@@ -18,7 +18,7 @@ A Norfolk-style farm planner tuned for an eight-month, twenty-day calendar. The 
 
 ## Labour Model
 
-- **Household:** 4 adults × 8 h/day × 20 days.
+- **Household abstraction:** One farmer embodies the combined effort of four adults working 8 h/day across 20 days.
 - **Budget:** 640 labour-hours per month, consumed per task including travel.
 - **Tracking:** HUD displays budget vs. usage; planner lists prerequisite-gated jobs.
 
