@@ -1,46 +1,33 @@
 # ASCII Farming Simulation
 
-A minute-accurate, season-aware farm simulation with Norfolk-style rotations, realistic task gating, and a visible farmer avatar whose movement reflects in-game time.
+A Norfolk-style farm planner tuned for an eight-month, twenty-day calendar. The simulation tracks labour explicitly, derives task durations from acres, and keeps the world grounded in a canonical “Spring I, Day 1” state.
 
-## Project Goals
+## Purpose
 
-1. **Minute-based core loop.** Deterministic, whole-minute ticks for work; avatar movement reflects time passage.
-2. **Seasonal daylight gating.** Work allowed from 30 minutes before sunrise to 30 minutes after sunset; KPIs derive from workable minutes.
-3. **Single-agent labour model.** One farmer stands for a four-adult household; slot-based concurrency simulates parallel labour.
-4. **Environment preconditions.** Mud, rain, hay dryness, crop readiness, and calendar windows gate task starts (`canStartTask`).
-5. **Physicality first.** Tasks accrue minutes; nothing completes instantly. Travel and handling time are costed (e.g., market runs).
-6. **Visible embodiment.** The avatar walks to the job site; presence is required for many tasks.
-7. **Configuration and testability.** Clear task schemas, a rule-like `canStartTask`, and headless tests to catch regressions.
+- **Calendar:** Eight named months (`I`–`VIII`), twenty days each, deterministic rollover.
+- **Labour:** Four adults working eight hours a day across twenty days → **640 labour-hours per month**.
+- **Fields:** Acre-scaled Norfolk rotation with closes, livestock placements, and store inventories.
+- **Planning:** Monthly priorities expand into concrete jobs with prerequisites and hour costs.
+- **Scheduling:** A monthly labour budget selects which jobs proceed; travel time is explicit.
 
-## Core Loop
+## Time Scale
 
-- **Render loop:** runs every animation frame for smooth visuals.
-- **Movement cadence:** **1 step per 0.5 sim minute** (2 steps/min), driven by a movement accumulator.
-- **Work cadence:** whole-minute ticks only; each occupied slot adds `+1 doneMin` to its task if within the daylight window and presence rules pass.
-- **Day rollover:** recompute daylight, re-plan, and churn overdue tasks.
+- **Simulation speed:** 60 simulation minutes per real minute.
+- **Movement cadence:** One grid step per 0.5 simulation minute.
+- **Day length:** 24 hours (1,440 simulation minutes) with deterministic month/day advancement.
 
-## Defaults
+## Labour Model
 
-- **Simulation speed:** **1.0 min/s** → **60 sim minutes per 60 real seconds**.
-- **Work window:** sunrise − 30 min to sunset + 30 min (seasonal).
-- **Slots:** 4 concurrent labour slots (represents a four-adult household).
+- **Household:** 4 adults × 8 h/day × 20 days.
+- **Budget:** 640 labour-hours per month, consumed per task including travel.
+- **Tracking:** HUD displays budget vs. usage; planner lists prerequisite-gated jobs.
 
-## Controls
+## Getting Started
 
-- Speed slider and presets (Pause, Very slow, Slow, Normal, Fast, Ultra).
-- Space toggles Pause. Number keys can map to preset speeds.
-- Debug HUD shows `minute`, `workStart/workEnd`, `speed`, and active slots.
+Open `index.html` in any modern browser. The HUD shows current month/day, simulation time, and labour usage. Use the **Advance Day** button to consume scheduled work and roll time forward; the planner panel updates as tasks complete and field phases change.
 
 ## Roadmap
 
-- Fatigue/skill affecting minute productivity.
-- Family members and hired labour.
-- Travel-time logistics (teams, wagons, winter roads).
-- Weather forecast and risk-aware planning.
-- Market days and variable prices.
-- Declarative rule engine for task preconditions.
-- Regression tests (no work outside daylight, no instant completions, wet hay never carted).
-
-## Building and Running
-
-Open `index.html` in a modern browser or serve with any static server. The default start uses the slow visual cadence with speed `1.0 min/s`, which is adequate for observing behaviour in real time.
+1. Month planner → Task durations → Inventory audit (completed in this pass).
+2. Next steps: livestock management refinements, garden/orchard expansion, winter work, yield modelling.
+3. Future ideas: weather impacts, trade pricing, save/load, multi-season progression.
