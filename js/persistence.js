@@ -51,6 +51,7 @@ export function toSnapshot(world) {
       active: world.tasks.month.active.map(t => serializeTask(world, t)),
       done: world.tasks.month.done.map(t => serializeTask(world, t)),
       overdue: world.tasks.month.overdue.map(t => serializeTask(world, t)),
+      activeWork: Array.isArray(world.farmer?.activeWork) ? [...world.farmer.activeWork] : [],
     },
     nextTaskId: world.nextTaskId ?? 1,
     flexChoice: world.flexChoice ?? null,
@@ -113,6 +114,43 @@ export function fromSnapshot(snap) {
     done: inflate(snap.tasks.done),
     overdue: inflate(snap.tasks.overdue),
   } };
+  const savedActiveWork = Array.isArray(snap.tasks?.activeWork) ? snap.tasks.activeWork : [];
+  const slotCount = world.labour?.crewSlots ?? (world.farmer?.activeWork?.length ?? 0);
+  world.farmer.activeWork = Array.from({ length: slotCount }, () => null);
+  const activeIds = new Set(world.tasks.month.active.map(t => t.id));
+  const queuedIds = new Set(world.tasks.month.queued.map(t => t.id));
+  for (let i = 0; i < Math.min(slotCount, savedActiveWork.length); i++) {
+    const id = savedActiveWork[i];
+    if (!id) continue;
+    if (activeIds.has(id)) {
+      world.farmer.activeWork[i] = id;
+    }
+  }
+  const assignedIds = new Set(world.farmer.activeWork.filter(Boolean));
+  const stillActive = [];
+  for (const task of world.tasks.month.active) {
+    if (assignedIds.has(task.id)) {
+      stillActive.push(task);
+    } else {
+      task.status = 'queued';
+      world.tasks.month.queued.push(task);
+      queuedIds.add(task.id);
+    }
+  }
+  world.tasks.month.active = stillActive;
+  const ensureQueued = (id) => {
+    if (!id || assignedIds.has(id) || queuedIds.has(id)) return;
+    const idx = world.tasks.month.overdue.findIndex(t => t.id === id);
+    if (idx !== -1) {
+      const [task] = world.tasks.month.overdue.splice(idx, 1);
+      task.status = 'queued';
+      world.tasks.month.queued.push(task);
+      queuedIds.add(task.id);
+    }
+  };
+  for (let i = 0; i < savedActiveWork.length; i++) {
+    ensureQueued(savedActiveWork[i]);
+  }
   world.flexChoice = snap.flexChoice ?? null;
   world.cash = snap.cash ?? 0;
   world.advisor = snap.advisor ?? { enabled: true, mode: 'auto' };

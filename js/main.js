@@ -80,7 +80,9 @@ function runFastForwardFrame(w) {
     TIMECTRL.mode = 'normal';
     return;
   }
-  if (TIMECTRL.ff.stopOnAlerts && w.alerts.length > 0 && w.kpi.warnings.length > 0) {
+  const hasAlerts = Array.isArray(w?.alerts) && w.alerts.length > 0;
+  const hasWarnings = !!(w?.kpi && Array.isArray(w.kpi.warnings) && w.kpi.warnings.length > 0);
+  if (TIMECTRL.ff.stopOnAlerts && (hasAlerts || hasWarnings)) {
     TIMECTRL.mode = 'normal';
     return;
   }
