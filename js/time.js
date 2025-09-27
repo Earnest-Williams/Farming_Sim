@@ -73,6 +73,42 @@ export const DAYLIGHT = Object.freeze({
   bounds: DAYLIGHT_BOUNDS,
 });
 
+function clampDayIndex(idx) {
+  const maxIndex = DAYLIGHT_SCHEDULE.length - 1;
+  if (!Number.isFinite(idx) || maxIndex < 0) {
+    return null;
+  }
+  return Math.max(0, Math.min(maxIndex, Math.floor(idx)));
+}
+
+export function computeDaylightByIndex(index) {
+  const clamped = clampDayIndex(index);
+  if (clamped == null) {
+    return {
+      ...DAYLIGHT_DEFAULT,
+      monthIndex: 0,
+      month: CALENDAR.MONTHS[0],
+      day: 1,
+    };
+  }
+  return DAYLIGHT_SCHEDULE[clamped] ?? {
+    ...DAYLIGHT_DEFAULT,
+    monthIndex: 0,
+    month: CALENDAR.MONTHS[0],
+    day: 1,
+  };
+}
+
+export function dayIndex(day = 1, month = 1) {
+  const safeDay = Math.max(1, Math.min(DAYS_PER_MONTH, Math.floor(day)));
+  const numericMonth = Number.isFinite(month) ? Math.floor(month) : 1;
+  const zeroBasedMonth =
+    numericMonth >= 0 && numericMonth < MONTHS_PER_YEAR
+      ? clampMonthIndex(numericMonth)
+      : clampMonthIndex(numericMonth - 1);
+  return zeroBasedMonth * DAYS_PER_MONTH + (safeDay - 1);
+}
+
 export const SIM = Object.freeze({
   MIN_PER_REAL_MIN: 60,
   STEP_MIN: 0.5,
