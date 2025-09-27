@@ -23,6 +23,7 @@ export function toSnapshot(world) {
     seed: world.seed,
     rngState: world.rng.state(),
     calendar: { month: world.calendar.month, day: world.calendar.day, year: world.calendar.year ?? 1, minute: world.calendar.minute },
+    camera: { x: world.camera?.x ?? 0, y: world.camera?.y ?? 0, follow: world.camera?.follow !== false },
     labour: { usedMin: world.labour.usedMin, monthBudgetMin: world.labour.monthBudgetMin, crewSlots: world.labour.crewSlots },
     parcels: world.parcels.map(p => ({
       key: p.key,
@@ -69,6 +70,11 @@ export function fromSnapshot(snap) {
   world.pathGrid = createPathfindingGrid();
   world.rng.set(snap.rngState);
   world.calendar = { ...snap.calendar };
+  if (snap.camera) {
+    world.camera.x = snap.camera.x ?? world.camera.x;
+    world.camera.y = snap.camera.y ?? world.camera.y;
+    world.camera.follow = snap.camera.follow !== false;
+  }
   world.labour = { ...snap.labour };
   const parcelMap = {};
   world.parcels.forEach(p => parcelMap[p.key] = p);
