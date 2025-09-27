@@ -42,9 +42,9 @@ export function updateKPIs(world) {
   const daysLeft = Math.max(0, 20 - d + 1);
   const avgMudFactor = world.parcels.reduce((s, p) => s + (p.status?.mud || 0), 0) / Math.max(1, world.parcels.length);
   const workability = Math.max(0.4, 1 - 0.6 * avgMudFactor);
-  const daylightFactor = 1.0;
   const slots = world.labour.crewSlots || 4;
-  const workableMinPerDay = daylightFactor * LABOUR_DAY_MIN * slots * workability;
+  const workMinutesToday = Math.max(0, (world.daylight?.workEnd ?? 0) - (world.daylight?.workStart ?? 0));
+  const workableMinPerDay = workMinutesToday * slots * workability;
   const month_workable_min_left = workableMinPerDay * daysLeft;
   const reqLeft = (world.tasks?.month?.queued || []).filter(t => t.latestDay >= d).reduce((s, t) => s + Math.max(0, (t.estMin - t.doneMin)), 0);
   world.kpi.month_workable_min_left = Math.round(month_workable_min_left);

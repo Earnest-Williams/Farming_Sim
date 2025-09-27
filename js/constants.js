@@ -1,5 +1,8 @@
-export const DAYS_PER_MONTH = 20;
-export const MONTHS_PER_YEAR = 8;
+import { DAYS_PER_MONTH as TIME_DAYS_PER_MONTH, MONTHS_PER_YEAR as TIME_MONTHS_PER_YEAR, MINUTES_PER_DAY as TIME_MINUTES_PER_DAY, DAYLIGHT } from './time.js';
+
+export const DAYS_PER_MONTH = TIME_DAYS_PER_MONTH;
+export const MONTHS_PER_YEAR = TIME_MONTHS_PER_YEAR;
+export const MINUTES_PER_DAY = TIME_MINUTES_PER_DAY;
 export const DAYS_PER_YEAR = DAYS_PER_MONTH * MONTHS_PER_YEAR;
 
 export const SEASONS = ["Spring","Spring","Summer","Summer","Autumn","Autumn","Winter","Winter"];
@@ -17,7 +20,6 @@ export function isWinterMonth(m) {
   return (m === 7 || m === 8);
 }
 
-export const MINUTES_PER_DAY = 24 * 60;
 export const N_MAX = 1.15;
 
 export const PARCEL_KIND = {
@@ -132,7 +134,7 @@ export const CONFIG = {
   IRRIGATION_THRESHOLD: 0.35,
   TEND_ROWS_PER_DAY: 4,
   WORK_JITTER: 0.10,
-  DAYLIGHT: { baseHours: 12, amplitude: 3, snapDays: 5, bufferMin: 30 },
+  DAYLIGHT,
   IRRIGATION_AMOUNT: 0.18,
   FODDER_PER_LIVESTOCK: 1,
   MANURE_NITROGEN_CREDIT: 0.005,

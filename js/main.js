@@ -1,8 +1,8 @@
 import { makeWorld, createPathfindingGrid } from './world.js';
-import { processFarmerMinute, dailyTurn, planDay, generateWeatherToday, updateSoilWaterDaily, pastureRegrow, updateHayCuring, consumeLivestock, dailyWeatherEvents, endOfYear, onNewMonth, simulateMonths } from './simulation.js';
-import { tickWorkMinute, monthHudInfo } from './tasks.js';
+import { stepOneMinute, planDay, onNewMonth, simulateMonths } from './simulation.js';
+import { monthHudInfo } from './tasks.js';
 import { getSeedFromURL, clamp, log } from './utils.js';
-import { MINUTES_PER_DAY, LABOUR_DAY_MIN, CONFIG, MONTH_NAMES, DAYS_PER_MONTH } from './constants.js';
+import { MINUTES_PER_DAY, CONFIG, MONTH_NAMES, DAYS_PER_MONTH } from './constants.js';
 import { renderColored, flushLine } from './render.js';
 import { advisorHud } from './advisor.js';
 import { saveToLocalStorage, loadFromLocalStorage, downloadSave, autosave } from './persistence.js';
@@ -357,16 +357,6 @@ function syncUiAfterWorldChange({ forceCenter = false } = {}) {
   updateMessageStack();
 }
 
-function stepOneMinute(w) {
-  tickWorkMinute(w);
-  processFarmerMinute(w);
-  w.calendar.minute++;
-  if (w.calendar.minute >= MINUTES_PER_DAY) {
-    w.calendar.minute = 0;
-    dailyTurn(w);
-  }
-}
-
 function onFrame() {
   if (!world) return;
   if (TIMECTRL.mode === 'normal') {
@@ -395,26 +385,20 @@ function runFastForward(days, stopOnAlerts = true) {
 }
 
 function runOneDay(w) {
-  generateWeatherToday(w);
-  updateSoilWaterDaily(w);
-  pastureRegrow(w);
-  updateHayCuring(w);
-  consumeLivestock(w);
-  planDay(w);
-  for (let m = 0; m < LABOUR_DAY_MIN; m++) tickWorkMinute(w);
-  dailyWeatherEvents(w);
-  autosave(w);
-  w.calendar.day += 1;
-  if (w.calendar.day > 20) {
-    w.calendar.day = 1;
-    w.calendar.month += 1;
-    if (w.calendar.month > 8) {
-      w.calendar.month = 1;
-      w.calendar.year = (w.calendar.year || 1) + 1;
-      endOfYear(w);
-    }
-    planDay(w);
-  }
+  if (!w) return;
+  const startDay = w.calendar.day;
+  const startMonth = w.calendar.month;
+  const startYear = w.calendar.year;
+  let guard = 0;
+  do {
+    stepOneMinute(w);
+    guard++;
+  } while (
+    w.calendar.day === startDay &&
+    w.calendar.month === startMonth &&
+    w.calendar.year === startYear &&
+    guard <= MINUTES_PER_DAY + 5
+  );
 }
 
 function runFastForwardFrame(w) {
@@ -428,8 +412,12 @@ function runFastForwardFrame(w) {
     TIMECTRL.mode = 'normal';
     return;
   }
-  dailyTurn(w);
-  for (let m = 0; m < MINUTES_PER_DAY; m++) tickWorkMinute(w);
+  const before = { year: w.calendar.year, month: w.calendar.month, day: w.calendar.day };
+  runOneDay(w);
+  if (w.calendar.year === before.year && w.calendar.month === before.month && w.calendar.day === before.day) {
+    // guard against staying in the same day (e.g., if time was mid-day)
+    runOneDay(w);
+  }
   TIMECTRL.ff.report.push({ y: w.calendar.year, m: w.calendar.month, d: w.calendar.day, oats: w.store.oats, hay: w.store.hay, wheat: w.store.wheat, cash: w.cash });
   TIMECTRL.ff.daysRemaining -= 1;
 }
