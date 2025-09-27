@@ -44,35 +44,55 @@ export function mudTooHigh(p, threshold = 0.35) {
   return (p.status.mud || 0) >= threshold;
 }
 
+const PARCEL_REQUIRED_TASKS = new Set([
+  TASK_KINDS.PloughPlot,
+  TASK_KINDS.HarrowPlot,
+  TASK_KINDS.Sow,
+  TASK_KINDS.DrillPlot,
+  TASK_KINDS.HoeRow,
+  TASK_KINDS.CartSheaves,
+  TASK_KINDS.CutCloverHay,
+  TASK_KINDS.CartHay,
+  TASK_KINDS.HarvestParcel,
+]);
+
+const MUD_SENSITIVE_TASKS = new Set([
+  TASK_KINDS.PloughPlot,
+  TASK_KINDS.HarrowPlot,
+  TASK_KINDS.Sow,
+  TASK_KINDS.DrillPlot,
+  TASK_KINDS.CartSheaves,
+]);
+
 export function canStartTask(world, task) {
   const p = task.parcelId != null ? world.parcels[task.parcelId] : null;
+  if (PARCEL_REQUIRED_TASKS.has(task.kind) && !p) return false;
+
+  if (MUD_SENSITIVE_TASKS.has(task.kind) && mudTooHigh(p)) return false;
+
   switch (task.kind) {
     case TASK_KINDS.PloughPlot:
+      return true;
     case TASK_KINDS.HarrowPlot:
+      return p.status.lastPloughedOn != null || (p.status.tilth || 0) >= 0.2;
     case TASK_KINDS.Sow:
-    case TASK_KINDS.DrillPlot:
-    case TASK_KINDS.CartSheaves:
-      return !!p && !mudTooHigh(p);
-    case TASK_KINDS.CutCloverHay:
-      return !!p && world.weather.rain_mm <= 0.2;
-    case TASK_KINDS.CartHay: {
-      const h = p?.hayCuring;
-      return !!h && h.dryness >= 1 && world.weather.rain_mm <= 0.2;
-    }
-    case TASK_KINDS.HarrowPlot:
-      return !!p && (p.status.lastPloughedOn != null || (p.status.tilth || 0) >= 0.2);
-    case TASK_KINDS.Sow:
-      if (!p || !p.rows?.length) return false;
+      if (!p.rows?.length) return false;
       return p.rows.every(r => !r.crop) && (p.status.tilth || 0) >= 0.2;
     case TASK_KINDS.DrillPlot:
-      return !!p && p.rows?.length;
+      return (p.rows?.length || 0) > 0;
+    case TASK_KINDS.CutCloverHay:
+      return world.weather.rain_mm <= 0.2;
+    case TASK_KINDS.CartHay: {
+      const h = p.hayCuring;
+      return !!h && h.dryness >= 1 && world.weather.rain_mm <= 0.2;
+    }
     case TASK_KINDS.HoeRow:
-      return !!p && p.rows?.some(r => r.crop);
+      return !!p.rows?.some(r => r.crop);
     case TASK_KINDS.HarvestParcel:
-      if (!p || !p.rows?.length) return false;
+      if (!p.rows?.length) return false;
       return p.rows.every(r => r.crop && r.growth >= 1.0);
     case TASK_KINDS.CartSheaves:
-      return !!p && (p.fieldStore?.sheaves || 0) > 0;
+      return (p.fieldStore?.sheaves || 0) > 0;
     case TASK_KINDS.StackRicks:
       return Object.values(world.storeSheaves || {}).some(v => v > 0);
     case TASK_KINDS.Thresh:
