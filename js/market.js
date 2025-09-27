@@ -1,5 +1,5 @@
 import { PRICES, DAYS_PER_MONTH } from './constants.js';
-import { MINUTES_PER_DAY } from './time.js';
+import { MINUTES_PER_DAY, CALENDAR } from './time.js';
 
 const MOVE_MIN_PER_STEP = 0.5;
 const LOAD_UNLOAD_MIN = 20;
@@ -195,8 +195,22 @@ export function estimateManifestValue(world, request = {}) {
 }
 
 function absoluteMinutes(world) {
-  const dayIndex = (world.calendar.day - 1) + (world.calendar.month - 1) * DAYS_PER_MONTH;
-  return dayIndex * MINUTES_PER_DAY + (world.calendar.minute ?? 0);
+  const monthIndex = Number.isFinite(world.calendar?.monthIndex)
+    ? world.calendar.monthIndex
+    : (() => {
+      const month = world.calendar?.month;
+      if (typeof month === 'number' && Number.isFinite(month)) {
+        return Math.max(0, Math.floor(month - 1));
+      }
+      if (typeof month === 'string') {
+        const idx = CALENDAR?.MONTHS?.indexOf(month);
+        if (idx >= 0) return idx;
+      }
+      return 0;
+    })();
+  const day = Math.max(1, (world.calendar?.day ?? 1));
+  const dayIndex = (day - 1) + monthIndex * DAYS_PER_MONTH;
+  return dayIndex * MINUTES_PER_DAY + (world.calendar?.minute ?? 0);
 }
 
 export function estimateRoundTripMinutes(world) {
