@@ -4,9 +4,10 @@ import {
   STRAW_PER_BUSHEL,
   THRESH_LOSS,
   CROPS,
-  TASK_KINDS,
-  PRICES} from './constants.js';
+  TASK_KINDS } from './constants.js';
 import { attachPastureIfNeeded, stamp } from './world.js';
+import { priceFor, transactAtMarket, buildMarketManifest, ensureMarketState } from './market.js';
+export { priceFor } from './market.js';
 
 export function applySowPenalty(world, p) {
   const d = world.calendar.day;
@@ -246,31 +247,15 @@ function harvestOrchard(world) {
   p.status.cropNote = 'Orchard harvested';
 }
 
-export function priceFor(item, month) {
-  const drift = (month >= 6 && month <= 8) ? +0.10 : 0;
-  return (PRICES[item] || 0) * (1 + drift);
-}
-
 function cartToMarket(world, payload) {
-  let revenue = 0;
-  for (const line of payload || []) {
-    const { item, qty } = line;
-    if (!qty) continue;
-    switch (item) {
-      case 'wheat_bu': world.store.wheat = Math.max(0, world.store.wheat - qty); break;
-      case 'barley_bu': world.store.barley = Math.max(0, world.store.barley - qty); break;
-      case 'oats_bu': world.store.oats = Math.max(0, world.store.oats - qty); break;
-      case 'pulses_bu': world.store.pulses = Math.max(0, world.store.pulses - qty); break;
-      case 'hay_t': world.store.hay = Math.max(0, world.store.hay - qty); break;
-      case 'straw_t': world.store.straw = Math.max(0, world.store.straw - qty); break;
-      case 'cider_l': world.store.cider_l = Math.max(0, world.store.cider_l - qty); break;
-      case 'meat_lb': world.store.meat_salted = Math.max(0, world.store.meat_salted - qty); break;
-      case 'bacon_side': world.store.bacon_sides = Math.max(0, world.store.bacon_sides - qty); break;
-      default: continue;
-    }
-    revenue += qty * priceFor(item, world.calendar.month);
+  ensureMarketState(world);
+  const request = payload?.request ?? payload ?? {};
+  const manifest = payload?.manifest ?? buildMarketManifest(world, request);
+  if (!manifest.sell.length && !manifest.buy.length) {
+    world.market.tripInProgress = false;
+    return;
   }
-  world.cash += revenue;
+  transactAtMarket(world, manifest);
 }
 
 function clampRoots(world, p) {

@@ -19,6 +19,7 @@ import {
   ROWS
 } from './constants.js';
 import { computeDaylightByIndex } from './time.js';
+import { ensureMarketState } from './market.js';
 
 const SCREEN_W = CONFIG.SCREEN.W;
 const SCREEN_H = CONFIG.SCREEN.H;
@@ -370,6 +371,7 @@ export function makeWorld(seed) {
   kpiInit(world);
   ensureAdvisor(world);
   world.pathGrid = createPathfindingGrid();
+  ensureMarketState(world);
   Object.defineProperty(world, 'plots', { get() { return world.parcels; } });
   return world;
 }

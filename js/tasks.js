@@ -11,9 +11,15 @@ import {
 } from './constants.js';
 import { applyTaskEffects } from './state.js';
 import { assertCompletionNotPremature } from './tests/invariants.js';
-
-const SPEEDS = { walk_m_per_min: 70, cart_m_per_min: 120 };
-const OVERHEAD = { load_per_crate_min: 1.2, market_transaction_min: 8 };
+import {
+  needsMarketTrip,
+  marketOpenNow,
+  estimateManifestValue,
+  estimateRoundTripMinutes,
+  buildMarketManifest,
+  travelPenalty,
+  ensureMarketState,
+} from './market.js';
 
 const REQUIRES_PRESENCE = new Set([
   TASK_KINDS.PloughPlot,
@@ -42,19 +48,8 @@ function distM(world, a = { x: 0, y: 0 }, b = { x: 0, y: 0 }) {
 
 function estimateMinutes(world, spec = {}) {
   if (spec.kind === TASK_KINDS.CartToMarket) {
-    const farmhouse = world.farmhouse ?? { x: 0, y: 0 };
-    const yard = world.locations?.yard ?? farmhouse;
-    const marketDefault = { x: yard.x + 200, y: yard.y + 50 };
-    const market = world.locations?.market ?? marketDefault;
-    const distance = distM(world, yard, market);
-    const speed = world.assets?.oxCart ? SPEEDS.cart_m_per_min : SPEEDS.walk_m_per_min;
-    const travel = (distance * 2) / (speed || SPEEDS.walk_m_per_min);
-    const payload = spec.payload;
-    const crates = Array.isArray(payload)
-      ? payload.reduce((acc, item) => acc + (item.qty ?? 1), 0)
-      : (payload?.crates ?? Math.max(1, world.store?.cratesToSell ?? 1));
-    const handling = crates * OVERHEAD.load_per_crate_min + OVERHEAD.market_transaction_min;
-    return Math.max(5, Math.round(travel + handling));
+    ensureMarketState(world);
+    return Math.max(5, Math.round(estimateRoundTripMinutes(world)));
   }
   if (spec.parcelId != null) {
     const parcel = world.parcels?.[spec.parcelId];
@@ -161,14 +156,20 @@ export function canStartTask(world, task) {
     case TASK_KINDS.Thresh:
       return !!world.stackReady && Object.values(world.storeSheaves || {}).some(v => v > 0);
     case TASK_KINDS.CartToMarket: {
-      const store = world.store || {};
-      const goods = Object.values(store).some(value => typeof value === 'number' && value > 0);
-      if (!goods) return false;
-      const minute = world.calendar.minute ?? 0;
-      const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
-      if (minute < daylight.workStart || minute > daylight.workEnd) return false;
+      ensureMarketState(world);
+      if (world.market.tripInProgress) return false;
+      if (!marketOpenNow(world)) return false;
       if (world.weather?.rain_mm > 2 && !world.assets?.coveredCart) return false;
-      return true;
+      const request = task.payload?.request ?? task.payload ?? {};
+      const need = needsMarketTrip(world, request);
+      console.debug('[cartToMarket]', {
+        eligible: need.ok,
+        score: Math.min(10, need.manifestValue / 50) - travelPenalty(world),
+        minutes: Math.round(estimateRoundTripMinutes(world)),
+        manifest: need.manifest,
+        cooldownOk: need.cooldownOk,
+      });
+      return need.ok;
     }
     default:
       if (MUD_SENSITIVE_TASKS.has(task.kind) && p && mudTooHigh(p)) return false;
@@ -179,6 +180,13 @@ export function canStartTask(world, task) {
 function scoreTask(world, t) {
   const day = world.calendar.day;
   const slack = Math.max(0, t.latestDay - day);
+  if (t.kind === TASK_KINDS.CartToMarket) {
+    ensureMarketState(world);
+    const request = t.payload?.request ?? t.payload ?? {};
+    const manifestValue = estimateManifestValue(world, request);
+    const valueScore = Math.min(10, manifestValue / 50) - travelPenalty(world);
+    return (t.priority * 1000) + Math.round(valueScore * 100);
+  }
   let score = (t.priority * 1000) + (100 - Math.min(99, slack));
   if (t.parcelId != null) {
     const parcel = world.parcels?.[t.parcelId];
@@ -221,6 +229,15 @@ export function planDayMonthly(world) {
     while (guard-- > 0) {
       task = world.tasks.month.queued.shift();
       if (canStartTask(world, task)) {
+        if (task.kind === TASK_KINDS.CartToMarket) {
+          ensureMarketState(world);
+          const request = task.payload?.request ?? task.payload ?? {};
+          const manifest = buildMarketManifest(world, request);
+          task.payload = { ...(task.payload || {}), request, manifest };
+          task.estMin = Math.max(1, Math.round(estimateRoundTripMinutes(world)));
+          world.market.tripInProgress = true;
+          world.market.lastPlannedManifest = manifest;
+        }
         task.status = 'active';
         world.tasks.month.active.push(task);
         world.farmer.activeWork[i] = task.id;
@@ -314,6 +331,15 @@ function topUpActiveSlots(world) {
         task = pool.shift();
         if (!task) continue;
         if (canStartTask(world, task)) {
+          if (task.kind === TASK_KINDS.CartToMarket) {
+            ensureMarketState(world);
+            const request = task.payload?.request ?? task.payload ?? {};
+            const manifest = buildMarketManifest(world, request);
+            task.payload = { ...(task.payload || {}), request, manifest };
+            task.estMin = Math.max(1, Math.round(estimateRoundTripMinutes(world)));
+            world.market.tripInProgress = true;
+            world.market.lastPlannedManifest = manifest;
+          }
           task.status = 'active';
           world.tasks.month.active.push(task);
           world.farmer.activeWork[s] = task.id;

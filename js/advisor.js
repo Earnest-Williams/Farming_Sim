@@ -10,6 +10,7 @@ import {
 import { seedNeededForParcel } from './constants.js';
 import { estimateParcelYieldBushelsWithTiming, priceFor } from './state.js';
 import { makeTask } from './tasks.js';
+import { estimateRoundTripMinutes } from './market.js';
 
 export function updateKPIs(world) {
   const S = world.store;
@@ -188,22 +189,27 @@ export function advisorExecute(world, mode = 'auto') {
     if (s.type === 'buy') {
       const ok = buy(world, s.item, s.qty);
       if (!ok) {
+        const request = {
+          buy: [{ item: s.item, qty: s.qty, reason: s.reason }],
+          sell: [{ item: 'barley_bu', qty: Math.min(world.store.barley || 0, 40), reason: 'raise_cash' }],
+        };
         world.tasks.month.queued.push(makeTask(world, {
           kind: TASK_KINDS.CartToMarket,
           parcelId: null,
-          payload: [{ item: 'barley_bu', qty: Math.min(world.store.barley || 0, 40) }],
+          payload: { request },
           latestDay: Math.min(20, world.calendar.day + 3),
-          estMin: WORK_MINUTES.CartToMarket,
+          estMin: Math.round(estimateRoundTripMinutes(world)),
           priority: 18,
         }));
       }
     } else if (s.type === 'sell') {
+      const request = { sell: s.items, reason: s.reason };
       world.tasks.month.queued.push(makeTask(world, {
         kind: TASK_KINDS.CartToMarket,
         parcelId: null,
-        payload: s.items,
+        payload: { request },
         latestDay: Math.min(20, world.calendar.day + 2),
-        estMin: WORK_MINUTES.CartToMarket,
+        estMin: Math.round(estimateRoundTripMinutes(world)),
         priority: 16,
       }));
     }
