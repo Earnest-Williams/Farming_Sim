@@ -3,7 +3,75 @@ export const CALENDAR = Object.freeze({
   DAYS_PER_MONTH: 20,
 });
 
+export const DAYS_PER_MONTH = CALENDAR.DAYS_PER_MONTH;
+export const MONTHS_PER_YEAR = CALENDAR.MONTHS.length;
+
 export const MINUTES_PER_DAY = 24 * 60;
+
+const DEFAULT_WORK_START_MIN = 6 * 60;
+const DEFAULT_WORK_END_MIN = 18 * 60;
+
+const DAYLIGHT_ANCHORS = Object.freeze([
+  Object.freeze({ monthIndex: 0, workStart: 6 * 60, workEnd: 18 * 60 }),
+  Object.freeze({ monthIndex: 1, workStart: 5 * 60 + 30, workEnd: 19 * 60 + 30 }),
+  Object.freeze({ monthIndex: 2, workStart: 5 * 60, workEnd: 20 * 60 + 30 }),
+  Object.freeze({ monthIndex: 3, workStart: 4 * 60 + 45, workEnd: 21 * 60 }),
+  Object.freeze({ monthIndex: 4, workStart: 5 * 60 + 15, workEnd: 20 * 60 + 30 }),
+  Object.freeze({ monthIndex: 5, workStart: 5 * 60 + 45, workEnd: 19 * 60 + 30 }),
+  Object.freeze({ monthIndex: 6, workStart: 6 * 60 + 30, workEnd: 18 * 60 }),
+  Object.freeze({ monthIndex: 7, workStart: 7 * 60 + 15, workEnd: 17 * 60 }),
+]);
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function buildDaylightSchedule() {
+  const schedule = [];
+  for (let monthIndex = 0; monthIndex < MONTHS_PER_YEAR; monthIndex += 1) {
+    const current = DAYLIGHT_ANCHORS[monthIndex];
+    const next = DAYLIGHT_ANCHORS[(monthIndex + 1) % MONTHS_PER_YEAR];
+    for (let dayIdx = 0; dayIdx < DAYS_PER_MONTH; dayIdx += 1) {
+      const blend = dayIdx / DAYS_PER_MONTH;
+      const workStart = Math.round(lerp(current.workStart, next.workStart, blend));
+      const workEnd = Math.round(lerp(current.workEnd, next.workEnd, blend));
+      const dayLenMinutes = Math.max(0, workEnd - workStart);
+      schedule.push(Object.freeze({
+        monthIndex,
+        month: CALENDAR.MONTHS[monthIndex],
+        day: dayIdx + 1,
+        workStart,
+        workEnd,
+        dayLenMinutes,
+        dayLenHours: dayLenMinutes / 60,
+      }));
+    }
+  }
+  return Object.freeze(schedule);
+}
+
+const DAYLIGHT_SCHEDULE = buildDaylightSchedule();
+
+const DAYLIGHT_DEFAULT = Object.freeze({
+  workStart: DEFAULT_WORK_START_MIN,
+  workEnd: DEFAULT_WORK_END_MIN,
+  dayLenMinutes: DEFAULT_WORK_END_MIN - DEFAULT_WORK_START_MIN,
+  dayLenHours: (DEFAULT_WORK_END_MIN - DEFAULT_WORK_START_MIN) / 60,
+});
+
+const DAYLIGHT_BOUNDS = Object.freeze({
+  minWorkStart: DAYLIGHT_SCHEDULE.reduce((acc, entry) => Math.min(acc, entry.workStart), DEFAULT_WORK_START_MIN),
+  maxWorkEnd: DAYLIGHT_SCHEDULE.reduce((acc, entry) => Math.max(acc, entry.workEnd), DEFAULT_WORK_END_MIN),
+  minDayLenHours: DAYLIGHT_SCHEDULE.reduce((acc, entry) => Math.min(acc, entry.dayLenHours), DAYLIGHT_DEFAULT.dayLenHours),
+  maxDayLenHours: DAYLIGHT_SCHEDULE.reduce((acc, entry) => Math.max(acc, entry.dayLenHours), DAYLIGHT_DEFAULT.dayLenHours),
+});
+
+export const DAYLIGHT = Object.freeze({
+  anchors: DAYLIGHT_ANCHORS,
+  schedule: DAYLIGHT_SCHEDULE,
+  default: DAYLIGHT_DEFAULT,
+  bounds: DAYLIGHT_BOUNDS,
+});
 
 export const SIM = Object.freeze({
   MIN_PER_REAL_MIN: 60,
