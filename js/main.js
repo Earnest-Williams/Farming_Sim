@@ -35,6 +35,15 @@ const PANEL_RENDERERS = {
   controls: renderControlsPanel,
 };
 
+function resizeOverlayCanvas() {
+  if (!overlayRef || !screenRef) return;
+  const dpr = window.devicePixelRatio || 1;
+  overlayRef.width = Math.round(screenRef.clientWidth * dpr);
+  overlayRef.height = Math.round(screenRef.clientHeight * dpr);
+  overlayRef.style.width = `${screenRef.clientWidth}px`;
+  overlayRef.style.height = `${screenRef.clientHeight}px`;
+}
+
 function escapeHtml(value) {
   if (value == null) return '';
   return String(value)
@@ -427,7 +436,12 @@ function runFastForwardFrame(w) {
 
 function drawDebugOverlay(w, canvas) {
   const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(dpr, dpr);
+  const cssWidth = canvas.width / dpr;
+  const cssHeight = canvas.height / dpr;
   ctx.font = '12px ui-monospace';
   const lineH = 14;
   const paddingLeft = Number.isFinite(charSize.paddingLeft)
@@ -446,7 +460,7 @@ function drawDebugOverlay(w, canvas) {
       const pSY = (p.y - camY) * charSize.height + paddingTop;
       const pSW = p.w * charSize.width;
       const pSH = p.h * charSize.height;
-      if (pSX + pSW < 0 || pSX > canvas.width || pSY + pSH < 0 || pSY > canvas.height) continue;
+      if (pSX + pSW < 0 || pSX > cssWidth || pSY + pSH < 0 || pSY > cssHeight) continue;
       const mud = p.status.mud || 0;
       ctx.strokeStyle = `rgba(200,${Math.floor(200 * (1 - mud))},0,0.8)`;
       ctx.lineWidth = 2;
@@ -678,10 +692,7 @@ function init() {
   }
   setDrawerOpen(false);
   const resizeObserver = new ResizeObserver(() => {
-    overlayRef.width = screenRef.clientWidth;
-    overlayRef.height = screenRef.clientHeight;
-    overlayRef.style.width = `${screenRef.clientWidth}px`;
-    overlayRef.style.height = `${screenRef.clientHeight}px`;
+    resizeOverlayCanvas();
     measureCharSize();
     draw();
   });
@@ -697,10 +708,7 @@ function init() {
   attachSaveHelpers();
   bindKeyboard();
   window.simulateMonths = simulateMonths;
-  overlayRef.width = screenRef.clientWidth;
-  overlayRef.height = screenRef.clientHeight;
-  overlayRef.style.width = `${screenRef.clientWidth}px`;
-  overlayRef.style.height = `${screenRef.clientHeight}px`;
+  resizeOverlayCanvas();
   measureCharSize();
   syncUiAfterWorldChange({ forceCenter: true });
   draw();
