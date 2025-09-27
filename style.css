@@ -1,0 +1,60 @@
+:root { --bg:#0b0e12; --fg:#d8dee9; --dim:#94a3b8; --accent:#a3be8c; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 14px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      display: grid; place-items: center;
+    }
+    #wrap { width: 100%; max-width: 1100px; padding: 12px; box-sizing: border-box; }
+    #title { margin-bottom: 6px; color: var(--accent); }
+    #screen-container { position: relative; }
+    #screen {
+      background: #0a0c10; border: 1px solid #1f2937; border-radius: 8px;
+      padding: 12px; white-space: pre; overflow: auto; min-height: 540px;
+    }
+    #debug-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+    }
+    #hud { margin-top: 8px; color: var(--dim); }
+    .kbd { padding: 2px 6px; border: 1px solid #334155; border-radius: 6px; color: var(--fg); }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* --- High Contrast Mode --- */
+    body.hc { --bg: #e1e1e1; --fg: #111111; }
+    .hc #screen { background: #f0f0f0; border-color: #999; }
+    .hc .s0  { color:#6E8B54 } .hc .s1  { color:#7BAA59 } .hc .s2  { color:#8CD05E } .hc .s3  { color:#A1E86A }
+    .hc .s10 { color:#9A7E66 } .hc .s11 { color:#B58D5F } .hc .s12 { color:#A2765A }
+    .hc .s20 { color:#42f560 } .hc .s21 { color:#42f560 } .hc .s22 { color:#42f560 } .hc .s23 { color:#42f560 } .hc .s24 { color:#42f560 } .hc .s25 { color:#E0C0FF }
+    .hc .s30 { color:#9ACD32 } .hc .s31 { color:#ADDF37 } .hc .s32 { color:#C8E84A } .hc .s33 { color:#E5F05D } .hc .s34 { color:#FFF870 }
+    .hc .s40 { color:#22dd3c } .hc .s41 { color:#32e04a } .hc .s42 { color:#40e858 } .hc .s43 { color:#4af062 } .hc .s44 { color:#55f86f }
+    .hc .s50 { color:#8AE870 } .hc .s51 { color:#A9E88A } .hc .s52 { color:#C8F0A2 } .hc .s53 { color:#E5F05D } .hc .s54 { color:#FFF870 }
+    .hc .s60 { color:#9A7E66 } .hc .s61 { color:#B58D5F } .hc .s62 { color:#A2765A } .hc .s63 { color:#A2765A } .hc .s64 { color:#A2765A }
+    .hc .s70 { color:#42f560 } .hc .s71 { color:#42f560 } .hc .s72 { color:#42f560 } .hc .s73 { color:#42f560 } .hc .s74 { color:#42f560 }
+    .hc .s80 { color:#22dd3c } .hc .s81 { color:#32e04a } .hc .s82 { color:#40e858 } .hc .s83 { color:#4af062 } .hc .s84 { color:#55f86f }
+    .hc .s90 { color:#000000 } .hc .s91 { color:#555555 } .hc .s92 { color:#C1842C } .hc .s93 { color:#007BFF } .hc .s94 { color:#777777 } .hc .s95 { color:#666666 }
+    .hc .s96 { color:#a56a42 }
+    .hc .s100 { color:#222222 } .hc .s101 { color:#007BFF } .hc .s102 { color:#4A56E2 } .hc .s103 { color:#E59400 } .hc .s104 { color:#9DB2BF }
+    .hc .s110 { color:#D92626 } .hc .s111 { color:#D9A000 } .hc .s112 { color:#3D9952 }
+    .hc .s200 { color:#666666 }
+
+    /* --- Color Palette & Styles --- */
+    .s0  { color:#556B2F } .s1  { color:#6B8E23 } .s2  { color:#7FBF3F } .s3  { color:#9AD65A }
+    .s10 { color:#6E4E2E } .s11 { color:#8B5A2B } .s12 { color:#7A4A2A }
+    .s20 { color:#55B46B } .s21 { color:#61BC76 } .s22 { color:#6CC482 } .s23 { color:#76CC8C } .s24 { color:#7ED08F } .s25 { color:#C9B4CF }
+    .s30 { color:#6BAF4E } .s31 { color:#7FBF3F } .s32 { color:#9BC94A } .s33 { color:#B5CF4A } .s34 { color:#D8C05A }
+    .s40 { color:#39B54A } .s41 { color:#49C65A } .s42 { color:#5BD66C } .s43 { color:#5BD66C } .s44 { color:#5BD66C; font-weight: bold; }
+    .s50 { color:#6FB96B } .s51 { color:#86C779 } .s52 { color:#A7D389 } .s53 { color:#C9BE59 } .s54 { color:#E1C25A }
+    .s60 { color:#6BAF4E } .s61 { color:#7FBF3F } .s62 { color:#9BC94A } .s63 { color:#B5CF4A } .s64 { color:#D8C05A }
+    .s70 { color:#39B54A } .s71 { color:#49C65A } .s72 { color:#5BD66C } .s73 { color:#5BD66C } .s74 { color:#5BD66C; font-weight: bold; }
+    .s80 { color:#55B46B } .s81 { color:#61BC76 } .s82 { color:#6CC482 } .s83 { color:#76CC8C } .s84 { color:#7ED08F }
+    .s90 { color:#E6EDF3; font-weight:700 } .s91 { color:#C7D0D9 } .s92 { color:#E9B96E } .s93 { color:#4DA3FF } .s94 { color:#94A3B8 } .s95 { color:#C0C7D1 } .s96 { color:#654321 }
+    .s100 { color:#CBD5E1 } .s101 { color:#73B7FF } .s102 { color:#9AA9FF } .s103 { color:#FFB15E } .s104 { color:#DDE6F2 }
+    .s110 { color:#C73D3D } .s111 { color:#E1B74F } .s112 { color:#66C07A } .s113 { color:#C050E8 } .s114 { color:#D58FEF } .s115 { color:#B4E57E }
+    .s200 { color:#94A3B8 }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    .ripe-pulse { animation: pulse 1.5s infinite; text-decoration: underline; }
+    @media (prefers-reduced-motion: reduce) { .ripe-pulse { animation: none; text-decoration: underline; } }
