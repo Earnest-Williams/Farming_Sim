@@ -43,7 +43,7 @@ export function initSpeedControls() {
       const current = getSpeed();
       if (current === 0) {
         const stored = parseFloat(slider.dataset.prev ?? slider.value);
-        const preset = Number.isFinite(stored) && stored > 0 ? stored : 0.03;
+        const preset = Number.isFinite(stored) && stored > 0 ? stored : 1.0;
         setSpeed(preset);
         slider.value = String(preset);
       } else {

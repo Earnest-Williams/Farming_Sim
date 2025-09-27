@@ -1,5 +1,5 @@
 import { makeWorld, createPathfindingGrid } from './world.js';
-import { stepOneMinute, planDay, onNewMonth, simulateMonths } from './simulation.js';
+import { stepOneMinute, planDay, onNewMonth, simulateMonths, processFarmerHalfStep } from './simulation.js';
 import { monthHudInfo } from './tasks.js';
 import { getSeedFromURL, clamp, log } from './utils.js';
 import { MINUTES_PER_DAY, CONFIG, MONTH_NAMES, DAYS_PER_MONTH } from './constants.js';
@@ -11,7 +11,8 @@ import { initSpeedControls, syncSpeedControls } from './ui/speed.js';
 
 let world;
 let lastFrameTime = null;
-let accumulatedMinutes = 0;
+let workAccumulator = 0;
+let moveAccumulator = 0;
 const DEBUG = { showParcels: false, showRows: false, showSoilBars: true, showTaskQueue: false, showWorkability: true, showKPI: false };
 
 let charSize = { width: 8, height: 17 };
@@ -356,8 +357,12 @@ function resetFrameClock() {
 
 function advanceMinutes(count) {
   if (!world || count <= 0) return;
-  for (let i = 0; i < count; i++) stepOneMinute(world);
-  accumulatedMinutes = 0;
+  const whole = Math.floor(count);
+  if (whole <= 0) return;
+  for (let i = 0; i < whole * 2; i++) processFarmerHalfStep(world);
+  for (let i = 0; i < whole; i++) stepOneMinute(world);
+  workAccumulator = 0;
+  moveAccumulator = 0;
   resetFrameClock();
   draw();
 }
@@ -377,10 +382,18 @@ function onFrame(now) {
   const dt = Math.max(0, now - lastFrameTime);
   lastFrameTime = now;
 
-  accumulatedMinutes += minutesToAdvance(dt);
-  while (accumulatedMinutes >= 1) {
+  const deltaMin = minutesToAdvance(dt);
+  workAccumulator += deltaMin;
+  moveAccumulator += deltaMin;
+
+  while (moveAccumulator >= 0.5) {
+    processFarmerHalfStep(world);
+    moveAccumulator -= 0.5;
+  }
+
+  while (workAccumulator >= 1) {
     stepOneMinute(world);
-    accumulatedMinutes -= 1;
+    workAccumulator -= 1;
   }
 
   world.paused = getSpeed() === 0;
@@ -454,7 +467,7 @@ function drawDebugOverlay(w, canvas) {
 
 function draw() {
   if (!world) return;
-  const { buf, styleBuf } = renderColored(world, { speed: getSpeed(), accMin: accumulatedMinutes });
+  const { buf, styleBuf } = renderColored(world, { speed: getSpeed(), accMin: workAccumulator, moveAcc: moveAccumulator });
   const lines = [];
   for (let y = 0; y < buf.length; y++) lines.push(flushLine(buf[y], styleBuf[y]));
   screenRef.innerHTML = lines.join('\n');

@@ -199,7 +199,7 @@ function drawFarmer(buf, styleBuf, world, camX, camY) {
   }
 }
 
-function debugHUD(buf, styleBuf, world, { speed = 0, accMin = 0 } = {}) {
+function debugHUD(buf, styleBuf, world, { speed = 0, accMin = 0, moveAcc = 0 } = {}) {
   const minute = world.calendar.minute ?? 0;
   const daylight = world.daylight || { workStart: 0, workEnd: 0 };
   const slots = (world.farmer?.activeWork ?? []).map(id => id ?? '-').join(',');
@@ -207,6 +207,6 @@ function debugHUD(buf, styleBuf, world, { speed = 0, accMin = 0 } = {}) {
   const atY = world.farmer?.y ?? 0;
   const task = world.farmer?.task ?? '';
   const line = `m=${minute} ws=${daylight.workStart} we=${daylight.workEnd} slots=[${slots}] at=(${atX},${atY}) ` +
-    `speed=${speed.toFixed(2)} acc=${accMin.toFixed(2)} task=${task}`;
+    `speed=${speed.toFixed(2)} acc=${accMin.toFixed(2)} moveAcc=${moveAcc.toFixed(2)} task=${task}`;
   label(buf, styleBuf, 1, 0, line, SID.HUD_TEXT);
 }

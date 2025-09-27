@@ -25,7 +25,6 @@ import {
   tickWorkMinute,
   endOfDayMonth,
   moistureToMud,
-  processFarmerMinute,
   syncFarmerToActive,
   hasActiveWork,
   sendFarmerHome,
@@ -35,6 +34,8 @@ import { attachPastureIfNeeded } from './world.js';
 import { rowGrowthMultiplier } from './state.js';
 import { autosave } from './persistence.js';
 import { MINUTES_PER_DAY, computeDaylightByIndex, dayIndex } from './time.js';
+
+export { processFarmerHalfStep } from './tasks.js';
 import { assertNoWorkOutsideWindow } from './tests/invariants.js';
 
 function chooseFlex(world, option) {
@@ -209,8 +210,6 @@ export function planDay(world) {
 export function stepOneMinute(world) {
   const minute = world.calendar.minute ?? 0;
   const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
-
-  processFarmerMinute(world);
 
   if (minute >= daylight.workStart && minute <= daylight.workEnd) {
     tickWorkMinute(world);
