@@ -135,7 +135,7 @@ function maybeToolBreak(world, task) {
 export function planDayMonthly(world) {
   world.tasks.month.queued.sort((a, b) => scoreTask(world, b) - scoreTask(world, a));
   for (let i = 0; i < CREW_SLOTS; i++) {
-    if (world.farmer.activeWork[i]) continue;
+    if (world.farmer.activeWork[i] != null) continue;
     let task;
     let guard = world.tasks.month.queued.length;
     let foundTask = false;
@@ -168,7 +168,7 @@ export function tickWorkMinute(world) {
   let needsTopUp = false;
   for (let s = 0; s < CREW_SLOTS; s++) {
     const id = world.farmer.activeWork[s];
-    if (!id) continue;
+    if (id == null) continue;
     const t = findTaskById(world, id);
     if (!t) {
       world.farmer.activeWork[s] = null;
@@ -189,7 +189,7 @@ export function tickWorkMinute(world) {
   if (!needsTopUp) return;
 
   for (let s = 0; s < CREW_SLOTS; s++) {
-    if (world.farmer.activeWork[s]) continue;
+    if (world.farmer.activeWork[s] != null) continue;
     let task;
     let foundAndAssigned = false;
     const pools = [world.tasks.month.overdue, world.tasks.month.queued];
