@@ -7,14 +7,32 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="wrap">
-    <div id="title">18th Century Farm Simulation</div>
-    <div id="screen-container">
-      <pre id="screen" role="region" aria-live="polite" aria-label="ASCII farm world" aria-keyshortcuts="Space , . N + - C R Shift+R P H Shift+H Shift+L Alt+L" tabindex="0"></pre>
-      <canvas id="debug-overlay"></canvas>
-    </div>
-    <div id="hud">
-      Controls: <span class="kbd">,</span> . <span class="kbd">N</span> · <span class="kbd">Space</span> pause · <span class="kbd">1</span>/<span class="kbd">2</span>/<span class="kbd">3</span> speed · <span class="kbd">4</span> FFwd · <span class="kbd">R</span> reset · <span class="kbd">F5</span> save · <span class="kbd">F9</span> load · <span class="kbd">F1</span>-.. debug
+  <div id="app">
+    <header class="app-header">
+      <div class="title">18th Century Farm Simulation</div>
+      <div class="header-actions">
+        <button id="follow-toggle" type="button" aria-pressed="true" title="Toggle following the farmer">Following Farmer</button>
+        <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="info-drawer" title="Open information panels">Open Menu</button>
+      </div>
+    </header>
+    <div id="main">
+      <div id="viewport">
+        <div id="screen-container">
+          <pre id="screen" role="region" aria-live="polite" aria-label="ASCII farm world" aria-keyshortcuts="Space , . N + - C R Shift+R P H Shift+H Shift+L Alt+L" tabindex="0"></pre>
+          <canvas id="debug-overlay"></canvas>
+          <div id="message-stack" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+      <aside id="info-drawer" class="drawer" hidden aria-label="Simulation information panels">
+        <nav id="menu" aria-label="Information menu">
+          <button class="menu-item active" type="button" data-panel="overview">Overview</button>
+          <button class="menu-item" type="button" data-panel="inventory">Inventory</button>
+          <button class="menu-item" type="button" data-panel="parcels">Parcels</button>
+          <button class="menu-item" type="button" data-panel="messages">Messages</button>
+          <button class="menu-item" type="button" data-panel="controls">Controls</button>
+        </nav>
+        <div id="panel-content"></div>
+      </aside>
     </div>
   </div>
 
