@@ -63,6 +63,12 @@ export function rowCenter(parcel, rowIdx) {
 
 export const FARMER_START = { x: HOUSE.x + Math.floor(HOUSE.w / 2), y: HOUSE.y + HOUSE.h };
 
+function sqDist(a = { x: 0, y: 0 }, b = { x: 0, y: 0 }) {
+  const dx = (a.x ?? 0) - (b.x ?? 0);
+  const dy = (a.y ?? 0) - (b.y ?? 0);
+  return dx * dx + dy * dy;
+}
+
 function isBlocked(x, y) {
   if (x < 0 || x >= CONFIG.WORLD.W || y < 0 || y >= CONFIG.WORLD.H) return true;
   if (x >= HOUSE.x && x < HOUSE.x + HOUSE.w && y >= HOUSE.y && y < HOUSE.y + HOUSE.h) {
@@ -227,6 +233,39 @@ function initPastureDay1(world) {
   clover.pasture.biomass_t = Math.min(clover.acres * PASTURE.MAX_BIOMASS_T_PER_ACRE * 0.25, clover.acres * 0.2);
 }
 
+export function validateParcelProximity(world) {
+  const home = world.farmhouse ?? FARMER_START;
+  const closeFarPairs = new Map();
+  for (const parcel of world.parcels) {
+    const match = parcel.key.match(/^(.*)_(close|far)$/);
+    if (!match) continue;
+    const [, base, tag] = match;
+    if (!closeFarPairs.has(base)) closeFarPairs.set(base, {});
+    closeFarPairs.get(base)[tag] = parcel;
+  }
+  for (const { close, far } of closeFarPairs.values()) {
+    if (!close || !far) continue;
+    const dClose = sqDist(close, home);
+    const dFar = sqDist(far, home);
+    if (dClose > dFar) {
+      [close.x, far.x] = [far.x, close.x];
+      [close.y, far.y] = [far.y, close.y];
+      const tmpName = close.name;
+      close.name = far.name;
+      far.name = tmpName;
+    }
+  }
+}
+
+export function tagParcelProximity(world, closeCount = 3) {
+  const home = world.farmhouse ?? FARMER_START;
+  const ordered = world.parcels.map(p => ({ parcel: p, dist: Math.hypot((p.x ?? 0) - home.x, (p.y ?? 0) - home.y) }));
+  ordered.sort((a, b) => a.dist - b.dist);
+  ordered.forEach((entry, index) => {
+    entry.parcel.proximity = index < closeCount ? 'close' : 'far';
+  });
+}
+
 function markBareToBeSown(p, note) {
   p.status = { ...p.status, tilth: 0, stubble: false, cropNote: `Bare → ${note}` };
 }
@@ -292,6 +331,9 @@ function initEstate(world) {
 export function makeWorld(seed) {
   const effectiveSeed = seed ?? getSeedFromURL();
   const rng = makeRng(effectiveSeed);
+  const farmhouse = { x: FARMER_START.x, y: FARMER_START.y };
+  const yard = { x: farmhouse.x, y: farmhouse.y + 2 };
+  const market = { x: farmhouse.x + 200, y: farmhouse.y + 50 };
   const world = {
     rng,
     seed: effectiveSeed,
@@ -315,9 +357,14 @@ export function makeWorld(seed) {
     nextTaskId: 0,
     flexChoice: null,
     cash: 0,
+    farmhouse,
+    locations: { yard, market },
+    grid: { metersPerCell: 1 },
   };
 
   initEstate(world);
+  validateParcelProximity(world);
+  tagParcelProximity(world);
   initWeather(world);
   initCash(world);
   kpiInit(world);
