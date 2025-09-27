@@ -129,21 +129,25 @@ function nextQueuedEntry() {
 
 function runJobEntry(entry) {
   const job = entry.job;
-  if (!job) return;
+  if (!job) return 0;
   if (!job.canApply(state.world)) {
     entry.status = 'skipped';
     state.jobStatus.set(job.id, 'skipped');
-    return;
+    return 0;
   }
   entry.status = 'working';
   job.apply(state.world);
   recordJobCompletion(state.world, job);
-  consume(job.hours);
+  const hoursWorked = typeof job.hours === 'number' ? job.hours : 0;
+  consume(hoursWorked);
   updateLabourState();
   state.jobStatus.set(job.id, 'completed');
   entry.status = 'completed';
-  advanceSimMinutes(job.hours * 60);
+  if (hoursWorked > 0) {
+    advanceSimMinutes(hoursWorked * 60);
+  }
   state.world.calendar = { ...getSimTime() };
+  return hoursWorked;
 }
 
 function advanceDay() {
@@ -152,8 +156,8 @@ function advanceDay() {
   while (worked < LABOUR.HOURS_PER_DAY) {
     const entry = nextQueuedEntry();
     if (!entry) break;
-    runJobEntry(entry);
-    worked += entry.job.hours;
+    const hoursWorked = runJobEntry(entry);
+    worked += hoursWorked;
   }
   const current = getSimTime();
   const minutesToday = current.minute;
