@@ -160,6 +160,28 @@ function stackRicks(world) {
   world.stackReady = true;
 }
 
+const SHEAF_KEY_TO_STORE_FIELD = {
+  W: 'wheat',
+  B: 'barley',
+  O: 'oats',
+  P: 'pulses',
+  WHEAT: 'wheat',
+  BARLEY: 'barley',
+  OATS: 'oats',
+  PULSES: 'pulses',
+};
+
+const SHEAF_KEY_TO_STRAW_KEY = {
+  W: 'WHEAT',
+  B: 'BARLEY',
+  O: 'OATS',
+  P: 'PULSES',
+  WHEAT: 'WHEAT',
+  BARLEY: 'BARLEY',
+  OATS: 'OATS',
+  PULSES: 'PULSES',
+};
+
 function threshSheaves(world, cropKey) {
   if (!world.stackReady) return;
   const klist = cropKey ? [cropKey] : Object.keys(world.storeSheaves);
@@ -168,9 +190,15 @@ function threshSheaves(world, cropKey) {
     if (sheaves <= 0) continue;
     const grainBu = sheaves * (1 - THRESH_LOSS);
     world.storeSheaves[k] = 0;
-    const cropName = Object.values(CROPS).find(c => c.key === k)?.name.toLowerCase() || 'grain';
-    if (world.store[cropName] !== undefined) world.store[cropName] += grainBu;
-    world.store.straw += grainBu * (STRAW_PER_BUSHEL[k] || 1.0);
+    const storeField = SHEAF_KEY_TO_STORE_FIELD[k] || SHEAF_KEY_TO_STORE_FIELD[k?.toUpperCase?.()];
+    if (!storeField || world.store[storeField] === undefined) {
+      log(world, `⚠️ Cannot credit grain for unsupported crop key: ${k}`);
+      continue;
+    }
+    world.store[storeField] += grainBu;
+    const strawKey = SHEAF_KEY_TO_STRAW_KEY[k] || SHEAF_KEY_TO_STRAW_KEY[k?.toUpperCase?.()];
+    const strawPerBushel = strawKey ? STRAW_PER_BUSHEL[strawKey] : undefined;
+    world.store.straw += grainBu * (strawPerBushel || 1.0);
   }
 }
 
