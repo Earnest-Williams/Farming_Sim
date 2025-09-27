@@ -351,7 +351,7 @@ export function dailyTurn(world) {
     }
     onNewMonth(world);
   }
-  world.daylight = computeDaylightByIndex((world.calendar.day - 1) + (world.calendar.month - 1) * DAYS_PER_YEAR);
+  world.daylight = computeDaylightByIndex((world.calendar.month - 1) * DAYS_PER_MONTH + (world.calendar.day - 1));
 
   if (world.store.wheat > 0) world.store.wheat = Math.max(0, world.store.wheat - DEMAND.household_wheat_bu_per_day);
 
