@@ -1,52 +1,31 @@
-import { makeWorld, createPathfindingGrid } from './world.js';
-import { stepOneMinute, planDay, onNewMonth, simulateMonths, processFarmerHalfStep } from './simulation.js';
-import { monthHudInfo } from './tasks.js';
-import { getSeedFromURL, clamp, log } from './utils.js';
-import { MINUTES_PER_DAY, CONFIG, MONTH_NAMES, DAYS_PER_MONTH } from './constants.js';
-import { renderColored, flushLine } from './render.js';
-import { advisorHud } from './advisor.js';
-import { saveToLocalStorage, loadFromLocalStorage, downloadSave } from './persistence.js';
-import { minutesToAdvance, getSpeed, setSpeed } from './timeflow.js';
-import { initSpeedControls, syncSpeedControls } from './ui/speed.js';
+import { createInitialWorld, recordJobCompletion } from './world.js';
+import {
+  resetTime,
+  getSimTime,
+  advanceSimMinutes,
+  MINUTES_PER_DAY,
+  formatSimTime,
+} from './time.js';
+import {
+  resetLabour,
+  consume,
+  getLabourUsage,
+  LABOUR,
+  labourBudgetForMonth,
+} from './labour.js';
+import { generateMonthJobs } from './plan.js';
+import { scheduleMonth } from './scheduler.js';
 
-let world;
-let lastFrameTime = null;
-let workAccumulator = 0;
-let moveAccumulator = 0;
-const DEBUG = { showParcels: false, showRows: false, showSoilBars: true, showTaskQueue: false, showWorkability: true, showKPI: false };
-
-let charSize = { width: 8, height: 17 };
-let screenRef;
-let overlayRef;
-let messageRef;
-let drawerRef;
-let menuToggleRef;
-let followButtonRef;
-let panelContentRef;
-let panelButtons = [];
-let drawerOpen = false;
-let activePanel = 'overview';
-let lastPanelHtml = '';
-let lastMessagesKey = null;
-
-const CAMERA_STEP = 6;
-
-const PANEL_RENDERERS = {
-  overview: renderOverviewPanel,
-  inventory: renderInventoryPanel,
-  parcels: renderParcelsPanel,
-  messages: renderMessagesPanel,
-  controls: renderControlsPanel,
+const state = {
+  world: null,
+  monthJobs: [],
+  jobStatus: new Map(),
+  scheduleQueue: [],
+  scheduleUsage: { used: 0, budget: labourBudgetForMonth() },
+  activePanel: 'overview',
 };
 
-function resizeOverlayCanvas() {
-  if (!overlayRef || !screenRef) return;
-  const dpr = window.devicePixelRatio || 1;
-  overlayRef.width = Math.round(screenRef.clientWidth * dpr);
-  overlayRef.height = Math.round(screenRef.clientHeight * dpr);
-  overlayRef.style.width = `${screenRef.clientWidth}px`;
-  overlayRef.style.height = `${screenRef.clientHeight}px`;
-}
+const DOM = {};
 
 function escapeHtml(value) {
   if (value == null) return '';
@@ -58,618 +37,355 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function formatTime(minutes) {
-  const total = Math.max(0, Math.floor(minutes));
-  const hours = String(Math.floor(total / 60)).padStart(2, '0');
-  const mins = String(total % 60).padStart(2, '0');
-  return `${hours}:${mins}`;
+function selectDom() {
+  DOM.screen = document.getElementById('screen');
+  DOM.messageStack = document.getElementById('message-stack');
+  DOM.drawer = document.getElementById('info-drawer');
+  DOM.menuToggle = document.getElementById('menu-toggle');
+  DOM.followToggle = document.getElementById('follow-toggle');
+  DOM.menu = document.getElementById('menu');
+  DOM.panelContent = document.getElementById('panel-content');
+  DOM.advanceDay = document.getElementById('advance-day');
+  DOM.hudDate = document.getElementById('hud-date');
+  DOM.hudTime = document.getElementById('hud-time');
+  DOM.hudLabour = document.getElementById('hud-labour');
 }
 
-function formatMinutes(minutes) {
-  if (!Number.isFinite(minutes)) return '—';
-  const rounded = Math.round(minutes);
-  const hours = (rounded / 60).toFixed(1);
-  return `${rounded} min (${hours} h)`;
+function initEvents() {
+  if (DOM.menuToggle) {
+    DOM.menuToggle.addEventListener('click', () => {
+      const hidden = DOM.drawer.hasAttribute('hidden');
+      if (hidden) {
+        DOM.drawer.removeAttribute('hidden');
+      } else {
+        DOM.drawer.setAttribute('hidden', '');
+      }
+      DOM.menuToggle.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+    });
+  }
+
+  if (DOM.followToggle) {
+    DOM.followToggle.addEventListener('click', () => {
+      const pressed = DOM.followToggle.getAttribute('aria-pressed') === 'true';
+      DOM.followToggle.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+    });
+  }
+
+  if (DOM.menu) {
+    DOM.menu.addEventListener('click', (ev) => {
+      const button = ev.target.closest('button[data-panel]');
+      if (!button) return;
+      setActivePanel(button.dataset.panel);
+    });
+  }
+
+  if (DOM.advanceDay) {
+    DOM.advanceDay.addEventListener('click', advanceDay);
+  }
 }
 
-function titleCase(str) {
-  if (!str) return '';
-  return str
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+function updateLabourState() {
+  const usage = getLabourUsage();
+  state.world.labour = { ...usage };
+  return usage;
 }
 
-function renderTableRows(entries) {
-  return entries
-    .map(([label, value]) => (
-      `<tr><th scope="row">${escapeHtml(label)}</th><td class="numeric">${escapeHtml(value)}</td></tr>`
-    ))
-    .join('');
+function prepareMonth(month, { resetBudget = false } = {}) {
+  if (resetBudget) {
+    resetLabour(month);
+    state.world.completedJobs = [];
+  }
+  const usage = updateLabourState();
+  state.monthJobs = generateMonthJobs(state.world, month);
+  state.jobStatus = new Map();
+  state.monthJobs.forEach((job) => {
+    state.jobStatus.set(job.id, 'generated');
+  });
+  const { selected, used, budget } = scheduleMonth(state.world, month, state.monthJobs);
+  state.scheduleQueue = selected.map((job) => ({ job, status: 'queued' }));
+  const scheduledIds = new Set(selected.map((job) => job.id));
+  state.monthJobs.forEach((job) => {
+    if (scheduledIds.has(job.id)) {
+      state.jobStatus.set(job.id, 'queued');
+    } else {
+      state.jobStatus.set(job.id, 'unscheduled');
+    }
+  });
+  state.scheduleUsage = { used, budget, plannedMonth: month };
+  state.world.labour = { ...usage };
 }
 
-function renderOverviewPanel(w) {
-  if (!w) return '';
-  const { day, month, year, minute } = w.calendar;
-  const weather = w.weather || { tempC: 0, rain_mm: 0, wind_ms: 0, dryStreakDays: 0 };
-  const daylight = w.daylight || { sunrise: 0, sunset: 0 };
-  const labour = monthHudInfo(w);
-  const labourPct = labour.b ? Math.floor((labour.u / labour.b) * 100) : 0;
-  const dateLabel = `Year ${year}, Month ${MONTH_NAMES[month - 1]} Day ${day} of ${DAYS_PER_MONTH}`;
-  const weatherLabel = `Temp ${weather.tempC.toFixed(0)}°C · Rain ${weather.rain_mm.toFixed(1)}mm · Wind ${weather.wind_ms.toFixed(1)}m/s`;
-  const dryLabel = `Dry streak: ${weather.dryStreakDays} day${weather.dryStreakDays === 1 ? '' : 's'}`;
+function initWorld() {
+  resetTime();
+  state.world = createInitialWorld();
+  resetLabour(state.world.calendar.month);
+  updateLabourState();
+  prepareMonth(state.world.calendar.month, { resetBudget: true });
+}
+
+function nextQueuedEntry() {
+  return state.scheduleQueue.find((entry) => entry.status === 'queued');
+}
+
+function runJobEntry(entry) {
+  const job = entry.job;
+  if (!job) return;
+  if (!job.canApply(state.world)) {
+    entry.status = 'skipped';
+    state.jobStatus.set(job.id, 'skipped');
+    return;
+  }
+  entry.status = 'working';
+  job.apply(state.world);
+  recordJobCompletion(state.world, job);
+  consume(job.hours);
+  updateLabourState();
+  state.jobStatus.set(job.id, 'completed');
+  entry.status = 'completed';
+  advanceSimMinutes(job.hours * 60);
+  state.world.calendar = { ...getSimTime() };
+}
+
+function advanceDay() {
+  const startMonth = state.world.calendar.month;
+  let worked = 0;
+  while (worked < LABOUR.HOURS_PER_DAY) {
+    const entry = nextQueuedEntry();
+    if (!entry) break;
+    runJobEntry(entry);
+    worked += entry.job.hours;
+  }
+  const current = getSimTime();
+  const minutesToday = current.minute;
+  if (minutesToday > 0) {
+    advanceSimMinutes(MINUTES_PER_DAY - minutesToday);
+  } else {
+    advanceSimMinutes(MINUTES_PER_DAY);
+  }
+  state.world.calendar = { ...getSimTime() };
+  updateLabourState();
+  if (state.world.calendar.month !== startMonth) {
+    prepareMonth(state.world.calendar.month, { resetBudget: true });
+  }
+  renderAll();
+}
+
+function renderHud() {
+  const { label, time } = formatSimTime();
+  if (DOM.hudDate) DOM.hudDate.textContent = label;
+  if (DOM.hudTime) DOM.hudTime.textContent = time;
+  const usage = getLabourUsage();
+  const labourLabel = `Labour: ${usage.used.toFixed(1)} / ${usage.budget} h`;
+  if (DOM.hudLabour) DOM.hudLabour.textContent = labourLabel;
+}
+
+function renderScreen() {
+  if (!DOM.screen) return;
+  const lines = [];
+  const { month, day, year } = state.world.calendar;
+  lines.push(`Season: Month ${month} · Day ${day} · Year ${year}`);
+  lines.push('');
+  lines.push('Fields:');
+  state.world.fields.forEach((field) => {
+    lines.push(`  ${field.key.padEnd(14)} | ${String(field.crop).padEnd(18)} | ${field.phase}`);
+  });
+  lines.push('');
+  lines.push('Closes:');
+  state.world.closes.forEach((close) => {
+    lines.push(`  ${close.key.padEnd(14)} | ${String(close.crop).padEnd(18)} | ${close.phase}`);
+  });
+  lines.push('');
+  lines.push('Livestock:');
+  Object.entries(state.world.livestock)
+    .filter(([key]) => key !== 'where')
+    .forEach(([kind, count]) => {
+      const location = state.world.livestock.where?.[kind] ?? 'yard';
+      lines.push(`  ${kind.padEnd(12)} : ${String(count).padStart(2)} head · at ${location}`);
+    });
+  DOM.screen.textContent = lines.join('\n');
+}
+
+function renderOverviewPanel() {
+  const usage = getLabourUsage();
+  const { month, day, year, minute } = state.world.calendar;
+  const hours = Math.floor(minute / 60);
+  const mins = minute % 60;
+  const planned = state.scheduleQueue.filter((e) => e.status === 'queued').length;
+  const completed = state.scheduleQueue.filter((e) => e.status === 'completed').length;
   return `
     <section>
-      <h2>Day &amp; Weather</h2>
+      <h2>Calendar</h2>
       <dl class="detail-list">
-        <div><dt>Date</dt><dd>${escapeHtml(dateLabel)}</dd></div>
-        <div><dt>Time</dt><dd>${formatTime(minute)}</dd></div>
-        <div><dt>Weather</dt><dd>${escapeHtml(weatherLabel)}</dd></div>
-        <div><dt>Dry Spell</dt><dd>${escapeHtml(dryLabel)}</dd></div>
-        <div><dt>Sunlight</dt><dd>${formatTime(daylight.sunrise)} – ${formatTime(daylight.sunset)}</dd></div>
-        <div><dt>Flex Field</dt><dd>${escapeHtml(w.flexChoice || 'Pending')}</dd></div>
-        <div><dt>Speed</dt><dd>${getSpeed().toFixed(2)}× min/s</dd></div>
+        <div><dt>Month</dt><dd>${escapeHtml(month)}</dd></div>
+        <div><dt>Day</dt><dd>${day}</dd></div>
+        <div><dt>Time</dt><dd>${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}</dd></div>
+        <div><dt>Year</dt><dd>${year}</dd></div>
       </dl>
       <h2>Labour</h2>
       <dl class="detail-list">
-        <div><dt>Budget</dt><dd>${formatMinutes(labour.b)}</dd></div>
-        <div><dt>Used</dt><dd>${formatMinutes(labour.u)} (${labourPct}%)</dd></div>
-        <div><dt>Active Tasks</dt><dd>${labour.a}</dd></div>
-        <div><dt>Queued</dt><dd>${labour.q}</dd></div>
-        <div><dt>Overdue</dt><dd>${labour.o}</dd></div>
-        <div><dt>Next Task</dt><dd>${escapeHtml(labour.nextTxt)}</dd></div>
+        <div><dt>Budget</dt><dd>${usage.budget.toFixed(0)} hours</dd></div>
+        <div><dt>Used</dt><dd>${usage.used.toFixed(1)} hours</dd></div>
+        <div><dt>Daily Capacity</dt><dd>${LABOUR.HOURS_PER_DAY} hours</dd></div>
+        <div><dt>Planned Jobs</dt><dd>${planned}</dd></div>
+        <div><dt>Completed</dt><dd>${completed}</dd></div>
       </dl>
-      <h2>Advisor</h2>
-      <p>${escapeHtml(advisorHud(w))}</p>
     </section>
   `;
 }
 
-function renderInventoryPanel(w) {
-  if (!w) return '';
-  const store = w.store || {};
-  const sheaves = w.storeSheaves || {};
-  const livestock = w.livestock || {};
-  const cash = typeof w.cash === 'number' ? w.cash : 0;
-  const grainRows = [
-    ['Cash', `£${cash.toFixed(2)}`],
-    ['Wheat', `${Math.floor(store.wheat ?? 0)} bu`],
-    ['Barley', `${Math.floor(store.barley ?? 0)} bu`],
-    ['Oats', `${Math.floor(store.oats ?? 0)} bu`],
-    ['Pulses', `${Math.floor(store.pulses ?? 0)} bu`],
-  ];
-  const fodderRows = [
-    ['Hay', `${(store.hay ?? 0).toFixed(2)} t`],
-    ['Straw', `${Math.floor(store.straw ?? 0)} bundles`],
-    ['Manure', `${Math.floor(store.manure_units ?? 0)} units`],
-    ['Water', `${Math.floor(store.water ?? 0)} buckets`],
-  ];
-  const sheafRows = [
-    ['Wheat', `${Math.floor(sheaves.WHEAT ?? 0)} sheaves`],
-    ['Barley', `${Math.floor(sheaves.BARLEY ?? 0)} sheaves`],
-    ['Oats', `${Math.floor(sheaves.OATS ?? 0)} sheaves`],
-    ['Pulses', `${Math.floor(sheaves.PULSES ?? 0)} sheaves`],
-  ];
-  const livestockRows = Object.entries(livestock).map(([kind, count]) => [titleCase(kind), String(count)]);
+function plannerStatusLabel(status) {
+  switch (status) {
+    case 'queued':
+      return 'Scheduled';
+    case 'completed':
+      return 'Completed';
+    case 'skipped':
+      return 'Skipped';
+    case 'unscheduled':
+      return 'Not scheduled';
+    default:
+      return 'Planned';
+  }
+}
+
+function renderPlannerPanel() {
+  const month = state.world.calendar.month;
+  const rows = state.monthJobs.map((job) => {
+    const status = state.jobStatus.get(job.id) ?? 'planned';
+    const prereqs = Array.isArray(job.prerequisites) && job.prerequisites.length > 0
+      ? job.prerequisites.map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join('')
+      : '<span class="badge empty">None</span>';
+    const hoursLabel = job.hours ? job.hours.toFixed(1) : '—';
+    const acresLabel = job.acres ? job.acres.toFixed(1) : '—';
+    return `
+      <tr class="${escapeHtml(status)}">
+        <td>${escapeHtml(job.field ?? '—')}</td>
+        <td>${escapeHtml(job.operation ?? job.kind)}</td>
+        <td class="numeric">${acresLabel}</td>
+        <td class="numeric">${hoursLabel}</td>
+        <td>${prereqs}</td>
+        <td>${escapeHtml(plannerStatusLabel(status))}</td>
+      </tr>
+    `;
+  }).join('');
   return `
     <section>
-      <h2>Granary &amp; Cash</h2>
-      <table class="panel-table"><tbody>${renderTableRows(grainRows)}</tbody></table>
-      <h2>Fodder &amp; Supplies</h2>
-      <table class="panel-table"><tbody>${renderTableRows(fodderRows)}</tbody></table>
-      <h2>Sheaves in Field</h2>
-      <table class="panel-table"><tbody>${renderTableRows(sheafRows)}</tbody></table>
-      <h2>Livestock</h2>
-      <table class="panel-table"><tbody>${renderTableRows(livestockRows)}</tbody></table>
-    </section>
-  `;
-}
-
-function formatParcelCrop(parcel) {
-  if (!parcel?.rows?.length) return parcel.status?.cropNote || '—';
-  const crops = new Map();
-  for (const row of parcel.rows) {
-    if (row?.crop?.name) {
-      crops.set(row.crop.name, (crops.get(row.crop.name) || 0) + 1);
-    }
-  }
-  if (!crops.size) return parcel.status?.cropNote || 'Fallow';
-  const [name] = Array.from(crops.entries()).sort((a, b) => b[1] - a[1])[0];
-  return name;
-}
-
-function formatParcelStatus(parcel) {
-  if (!parcel) return '';
-  const parts = [];
-  if (parcel.rows?.length) {
-    const totalGrowth = parcel.rows.reduce((sum, row) => sum + (row?.growth ?? 0), 0);
-    const avgGrowth = parcel.rows.length ? totalGrowth / parcel.rows.length : 0;
-    if (Number.isFinite(avgGrowth)) parts.push(`Growth ${Math.round(avgGrowth * 100)}%`);
-  }
-  if (parcel.status?.targetHarvestM) parts.push(`Target M${parcel.status.targetHarvestM}`);
-  if ((parcel.status?.lateSow ?? 0) > 0) parts.push(`Late sow +${parcel.status.lateSow}`);
-  if ((parcel.status?.mud ?? 0) > 0.35) parts.push('Mud risk');
-  if ((parcel.fieldStore?.sheaves ?? 0) > 0) parts.push(`${Math.floor(parcel.fieldStore.sheaves)} sheaves ready`);
-  if (parcel.pasture?.biomass_t > 0) parts.push(`Pasture ${parcel.pasture.biomass_t.toFixed(2)} t`);
-  if (parcel.hayCuring) {
-    parts.push(`Hay curing ${Math.round(parcel.hayCuring.dryness * 100)}% (loss ${parcel.hayCuring.loss_t.toFixed(2)} t)`);
-  }
-  if (parcel.status?.cropNote) parts.push(parcel.status.cropNote);
-  return parts.length ? parts.join(' · ') : 'Stable';
-}
-
-function renderParcelsPanel(w) {
-  if (!w) return '';
-  const rows = (w.parcels || []).map((p) => (
-    `<tr><td>${escapeHtml(p.name)}</td><td class="numeric">${escapeHtml(String(p.acres ?? 0))}</td><td>${escapeHtml(formatParcelCrop(p))}</td><td>${escapeHtml(formatParcelStatus(p))}</td></tr>`
-  )).join('');
-  const body = rows || '<tr><td colspan="4">No parcels available.</td></tr>';
-  return `
-    <section>
-      <h2>Parcels</h2>
-      <table class="panel-table">
+      <h2>Month ${escapeHtml(month)} Planner</h2>
+      <table class="panel-table planner-table">
         <thead>
-          <tr><th>Parcel</th><th class="numeric">Acres</th><th>Crop</th><th>Status</th></tr>
+          <tr>
+            <th scope="col">Field</th>
+            <th scope="col">Operation</th>
+            <th scope="col" class="numeric">Acres</th>
+            <th scope="col" class="numeric">Hours</th>
+            <th scope="col">Prerequisites</th>
+            <th scope="col">Status</th>
+          </tr>
         </thead>
-        <tbody>${body}</tbody>
+        <tbody>
+          ${rows}
+        </tbody>
       </table>
     </section>
   `;
 }
 
-function renderMessagesPanel(w) {
-  if (!w) return '';
-  const entries = (w.logs || []).slice(0, 50);
-  if (!entries.length) {
-    return '<section><h2>Messages</h2><p>No messages yet.</p></section>';
+function renderInventoryPanel() {
+  const rows = Object.entries(state.world.stores).map(([key, value]) => (
+    `<tr><th scope="row">${escapeHtml(key)}</th><td class="numeric">${escapeHtml(value)}</td></tr>`
+  )).join('');
+  return `
+    <section>
+      <h2>Stores</h2>
+      <table class="panel-table"><tbody>${rows}</tbody></table>
+    </section>
+  `;
+}
+
+function renderParcelsPanel() {
+  const fieldRows = state.world.fields.map((field) => (
+    `<tr><th scope="row">${escapeHtml(field.key)}</th><td>${escapeHtml(field.crop)}</td><td>${escapeHtml(field.phase)}</td></tr>`
+  )).join('');
+  const closeRows = state.world.closes.map((close) => (
+    `<tr><th scope="row">${escapeHtml(close.key)}</th><td>${escapeHtml(close.crop)}</td><td>${escapeHtml(close.phase)}</td></tr>`
+  )).join('');
+  return `
+    <section>
+      <h2>Fields</h2>
+      <table class="panel-table"><thead><tr><th>Field</th><th>Crop</th><th>Phase</th></tr></thead><tbody>${fieldRows}</tbody></table>
+      <h2>Closes</h2>
+      <table class="panel-table"><thead><tr><th>Close</th><th>Crop</th><th>Phase</th></tr></thead><tbody>${closeRows}</tbody></table>
+    </section>
+  `;
+}
+
+function renderMessagesPanel() {
+  if (!Array.isArray(state.world.completedJobs) || state.world.completedJobs.length === 0) {
+    return '<p>No work completed yet this month.</p>';
   }
-  const items = entries.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('');
-  return `<section><h2>Messages</h2><ul class="panel-list">${items}</ul></section>`;
+  const items = state.world.completedJobs.map((job) => (
+    `<li><strong>${escapeHtml(job.kind)}</strong> on ${escapeHtml(job.field ?? 'estate')}</li>`
+  )).join('');
+  return `
+    <section>
+      <h2>Recent Work</h2>
+      <ul class="panel-list">${items}</ul>
+    </section>
+  `;
 }
 
 function renderControlsPanel() {
   return `
     <section>
       <h2>Controls</h2>
-      <ul class="panel-list">
-        <li>
-          <strong>Camera</strong>
-          <p><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span> or <span class="kbd">Arrow Keys</span> pan the view and unlock follow mode.</p>
-          <p><span class="kbd">C</span> or the Follow Farmer button recenters the camera and locks onto the farmer.</p>
-        </li>
-        <li>
-      <strong>Time</strong>
-          <p>The speed slider in the lower-left sets the pace. <span class="kbd">Space</span> toggles pause, <span class="kbd">,</span> advances one minute, <span class="kbd">.</span> advances ten, and <span class="kbd">N</span> skips to day end.</p>
-          <p><span class="kbd">1</span>–<span class="kbd">5</span> jump to preset speeds; the on-screen buttons offer the same choices plus a pause toggle.</p>
-        </li>
-        <li>
-          <strong>Management</strong>
-          <p><span class="kbd">L</span> with <span class="kbd">Shift</span> buys a cow; <span class="kbd">Alt</span> + <span class="kbd">L</span> sells one.</p>
-          <p><span class="kbd">R</span> resets the simulation; <span class="kbd">Shift</span>+<span class="kbd">R</span> starts with a new seed.</p>
-          <p><span class="kbd">F5</span> saves and <span class="kbd">F9</span> loads from browser storage.</p>
-        </li>
-        <li>
-          <strong>Display</strong>
-          <p><span class="kbd">P</span> toggles the information drawer. <span class="kbd">H</span> posts a help message; <span class="kbd">Shift</span>+<span class="kbd">H</span> toggles high contrast mode.</p>
-        </li>
-      </ul>
+      <p>Use <strong>Advance Day</strong> to consume labour and progress field work according to the monthly schedule.</p>
+      <p>The planner lists acre-scaled tasks with their prerequisites. Market trips only appear when the farm needs to trade.</p>
     </section>
   `;
 }
 
-function updatePanelContent() {
-  if (!panelContentRef) return;
-  const renderer = PANEL_RENDERERS[activePanel];
-  const html = renderer ? renderer(world) : '';
-  if (html !== lastPanelHtml) {
-    panelContentRef.innerHTML = html;
-    lastPanelHtml = html;
-  }
-}
+const PANEL_RENDERERS = {
+  overview: renderOverviewPanel,
+  planner: renderPlannerPanel,
+  inventory: renderInventoryPanel,
+  parcels: renderParcelsPanel,
+  messages: renderMessagesPanel,
+  controls: renderControlsPanel,
+};
 
-function setActivePanel(panelKey) {
-  if (!PANEL_RENDERERS[panelKey]) return;
-  activePanel = panelKey;
-  lastPanelHtml = '';
-  panelButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.panel === panelKey));
-  updatePanelContent();
-}
-
-function setDrawerOpen(open) {
-  drawerOpen = open;
-  if (drawerRef) {
-    drawerRef.hidden = !open;
-  }
-  if (menuToggleRef) {
-    menuToggleRef.setAttribute('aria-expanded', open ? 'true' : 'false');
-    menuToggleRef.textContent = open ? 'Close Menu' : 'Open Menu';
-    menuToggleRef.title = open ? 'Hide information panels' : 'Open information panels';
-  }
-}
-
-function updateFollowButton() {
-  if (!followButtonRef || !world) return;
-  const following = world.camera?.follow !== false;
-  followButtonRef.textContent = following ? 'Following Farmer' : 'Free Camera';
-  followButtonRef.setAttribute('aria-pressed', following ? 'true' : 'false');
-  followButtonRef.title = following ? 'Click to unlock the camera' : 'Click to follow the farmer';
-}
-
-function ensureCameraState(w) {
-  if (!w.camera) w.camera = { x: 0, y: 0, follow: true };
-  if (typeof w.camera.follow !== 'boolean') w.camera.follow = true;
-  if (!Number.isFinite(w.camera.x)) w.camera.x = 0;
-  if (!Number.isFinite(w.camera.y)) w.camera.y = 0;
-}
-
-function centerCameraOnFarmer() {
-  if (!world) return;
-  world.camera.x = clamp(world.farmer.x - CONFIG.SCREEN.W / 2, 0, CONFIG.WORLD.W - CONFIG.SCREEN.W);
-  world.camera.y = clamp(world.farmer.y - CONFIG.SCREEN.H / 2, 0, CONFIG.WORLD.H - CONFIG.SCREEN.H);
-}
-
-function moveCamera(dx, dy) {
-  if (!world) return;
-  const maxX = CONFIG.WORLD.W - CONFIG.SCREEN.W;
-  const maxY = CONFIG.WORLD.H - CONFIG.SCREEN.H;
-  world.camera.x = clamp((world.camera.x ?? 0) + dx, 0, maxX);
-  world.camera.y = clamp((world.camera.y ?? 0) + dy, 0, maxY);
-}
-
-function setFollow(follow) {
-  if (!world) return;
-  world.camera.follow = follow;
-  if (follow) centerCameraOnFarmer();
-  updateFollowButton();
-}
-
-function updateMessageStack() {
-  if (!messageRef || !world) return;
-  const messages = (world.logs || []).slice(0, 3);
-  const key = messages.join('||');
-  if (key === lastMessagesKey) return;
-  lastMessagesKey = key;
-  if (!messages.length) {
-    messageRef.innerHTML = '';
-    return;
-  }
-  messageRef.innerHTML = messages.map((msg) => `<div class="message">${escapeHtml(msg)}</div>`).join('');
-}
-
-function syncUiAfterWorldChange({ forceCenter = false } = {}) {
-  if (!world) return;
-  ensureCameraState(world);
-  if (forceCenter) world.camera.follow = true;
-  if (world.camera.follow !== false) {
-    centerCameraOnFarmer();
-  } else {
-    moveCamera(0, 0);
-  }
-  lastPanelHtml = '';
-  lastMessagesKey = null;
-  updateFollowButton();
-  updatePanelContent();
-  updateMessageStack();
-}
-
-function resetFrameClock() {
-  lastFrameTime = performance.now();
-}
-
-function advanceMinutes(count) {
-  if (!world || count <= 0) return;
-  const whole = Math.floor(count);
-  if (whole <= 0) return;
-  for (let i = 0; i < whole * 2; i++) processFarmerHalfStep(world);
-  for (let i = 0; i < whole; i++) stepOneMinute(world);
-  workAccumulator = 0;
-  moveAccumulator = 0;
-  resetFrameClock();
-  draw();
-}
-
-function skipToDayEnd() {
-  if (!world) return;
-  const remaining = Math.max(0, MINUTES_PER_DAY - (world.calendar.minute ?? 0));
-  advanceMinutes(remaining);
-}
-
-function onFrame(now) {
-  if (!world) {
-    requestAnimationFrame(onFrame);
-    return;
-  }
-  if (lastFrameTime == null) lastFrameTime = now;
-  const dt = Math.max(0, now - lastFrameTime);
-  lastFrameTime = now;
-
-  const deltaMin = minutesToAdvance(dt);
-  workAccumulator += deltaMin;
-  moveAccumulator += deltaMin;
-
-  while (moveAccumulator >= 0.5) {
-    processFarmerHalfStep(world);
-    moveAccumulator -= 0.5;
-  }
-
-  while (workAccumulator >= 1) {
-    stepOneMinute(world);
-    workAccumulator -= 1;
-  }
-
-  world.paused = getSpeed() === 0;
-  draw();
-  requestAnimationFrame(onFrame);
-}
-
-function drawDebugOverlay(w, canvas) {
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.scale(dpr, dpr);
-  const cssWidth = canvas.width / dpr;
-  const cssHeight = canvas.height / dpr;
-  ctx.font = '12px ui-monospace';
-  const lineH = 14;
-  const paddingLeft = Number.isFinite(charSize.paddingLeft)
-    ? charSize.paddingLeft
-    : parseFloat(getComputedStyle(screenRef).paddingLeft) || 0;
-  const paddingTop = Number.isFinite(charSize.paddingTop)
-    ? charSize.paddingTop
-    : parseFloat(getComputedStyle(screenRef).paddingTop) || 0;
-  const overlayMargin = 4;
-  const camX = Math.round(w.camera.x);
-  const camY = Math.round(w.camera.y);
-
-  if (DEBUG.showParcels) {
-    for (const p of w.parcels) {
-      const pSX = (p.x - camX) * charSize.width + paddingLeft;
-      const pSY = (p.y - camY) * charSize.height + paddingTop;
-      const pSW = p.w * charSize.width;
-      const pSH = p.h * charSize.height;
-      if (pSX + pSW < 0 || pSX > cssWidth || pSY + pSH < 0 || pSY > cssHeight) continue;
-      const mud = p.status.mud || 0;
-      ctx.strokeStyle = `rgba(200,${Math.floor(200 * (1 - mud))},0,0.8)`;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(pSX, pSY, pSW, pSH);
-      if (DEBUG.showSoilBars) {
-        const mx = Math.min(1, p.soil.moisture);
-        const nx = Math.min(1, p.soil.nitrogen);
-        ctx.fillStyle = '#58a';
-        ctx.fillRect(pSX + 2, pSY + 2, Math.floor(pSW * 0.3 * mx), 3);
-        ctx.fillStyle = '#8a5';
-        ctx.fillRect(pSX + 2, pSY + 7, Math.floor(pSW * 0.3 * nx), 3);
-      }
-      if (DEBUG.showWorkability && mud >= 0.35) {
-        ctx.fillStyle = 'rgba(200,0,0,0.7)';
-        ctx.fillText('MUD', pSX + 2, pSY + 20);
-      }
-    }
-  }
-
-  if (DEBUG.showTaskQueue) {
-    const q = w.tasks.month.queued.slice(0, 8).map(t => `${t.kind}(${t.latestDay}) p:${t.priority}`);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(paddingLeft - overlayMargin, paddingTop - overlayMargin, 360, 14 + lineH * q.length);
-    ctx.fillStyle = '#ddd';
-    ctx.fillText('Queue:', paddingLeft + 2, paddingTop + 8);
-    q.forEach((l, i) => ctx.fillText(l, paddingLeft + 2, paddingTop + 22 + lineH * i));
-  }
-
-  if (DEBUG.showKPI) {
-    const line = advisorHud(w);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(paddingLeft - overlayMargin, paddingTop + 108, 880, 20);
-    ctx.fillStyle = '#ddd';
-    ctx.fillText(line, paddingLeft + 2, paddingTop + 123);
-  }
-}
-
-function draw() {
-  if (!world) return;
-  const { buf, styleBuf } = renderColored(world, { speed: getSpeed(), accMin: workAccumulator, moveAcc: moveAccumulator });
-  const lines = [];
-  for (let y = 0; y < buf.length; y++) lines.push(flushLine(buf[y], styleBuf[y]));
-  screenRef.innerHTML = lines.join('\n');
-  updateMessageStack();
-  updatePanelContent();
-  updateFollowButton();
-  drawDebugOverlay(world, overlayRef);
-}
-
-function measureCharSize() {
-  const style = getComputedStyle(screenRef);
-  const temp = document.createElement('span');
-  temp.textContent = 'M';
-  temp.style.font = style.font;
-  temp.style.position = 'absolute';
-  temp.style.visibility = 'hidden';
-  document.body.appendChild(temp);
-  charSize = {
-    width: temp.offsetWidth,
-    height: temp.offsetHeight,
-    paddingLeft: parseFloat(style.paddingLeft) || 0,
-    paddingTop: parseFloat(style.paddingTop) || 0,
-  };
-  document.body.removeChild(temp);
-}
-
-function attachDebugToggles() {
-  window.debugToggle = (k) => {
-    DEBUG[k] = !DEBUG[k];
-    draw();
-  };
-}
-
-function attachSaveHelpers() {
-  window._save = () => downloadSave(world);
-}
-
-function bindKeyboard() {
-  window.addEventListener('keydown', (e) => {
-    if (e.key === ',') {
-      e.preventDefault();
-      world.snapCamera = true;
-      advanceMinutes(1);
-      world.snapCamera = false;
-    } else if (e.key === '.') {
-      e.preventDefault();
-      advanceMinutes(10);
-    } else if (e.key === 'n' || e.key === 'N') {
-      e.preventDefault();
-      skipToDayEnd();
-    } else if (e.key === 'r' || e.key === 'R') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        const newSeed = (Math.random() * 2 ** 31) | 0;
-        log(world, `New random seed: ${newSeed}`);
-        const url = new URL(location.href);
-        url.searchParams.set('seed', newSeed);
-        location.href = url.toString();
-      } else {
-        world = makeWorld(getSeedFromURL());
-        log(world, `Seed: ${world.seed}`);
-        onNewMonth(world);
-        planDay(world);
-        syncUiAfterWorldChange({ forceCenter: true });
-        draw();
-      }
-    } else if (e.key === 'p' || e.key === 'P') {
-      e.preventDefault();
-      setDrawerOpen(!drawerOpen);
-      updatePanelContent();
-    } else if (e.key === 'c' || e.key === 'C') {
-      e.preventDefault();
-      setFollow(true);
-      draw();
-    } else if (
-      e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
-      e.key === 'w' || e.key === 'W' || e.key === 'a' || e.key === 'A' || e.key === 's' || e.key === 'S' || e.key === 'd' || e.key === 'D'
-    ) {
-      const step = e.shiftKey ? CAMERA_STEP * 2 : CAMERA_STEP;
-      let dx = 0;
-      let dy = 0;
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') dy -= step;
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') dy += step;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') dx -= step;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') dx += step;
-      if (dx !== 0 || dy !== 0) {
-        e.preventDefault();
-        setFollow(false);
-        moveCamera(dx, dy);
-        draw();
-      }
-    } else if (e.key === 'l' || e.key === 'L') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        if (world.store.barley >= CONFIG.LIVESTOCK_BUY_COST) {
-          world.livestock.cows++;
-          world.store.barley -= CONFIG.LIVESTOCK_BUY_COST;
-          log(world, `Bought 1 cow for ${CONFIG.LIVESTOCK_BUY_COST} barley. Total cows: ${world.livestock.cows}`);
-        } else {
-          log(world, `Not enough barley to buy a cow (need ${CONFIG.LIVESTOCK_BUY_COST}, have ${world.store.barley}).`);
-        }
-      } else if (e.altKey) {
-        if (world.livestock.cows > 0) {
-          world.livestock.cows--;
-          world.store.barley += CONFIG.LIVESTOCK_SELL_VALUE;
-          log(world, `Sold 1 cow for ${CONFIG.LIVESTOCK_SELL_VALUE} barley. Total cows: ${world.livestock.cows}`);
-        } else {
-          log(world, 'No cows to sell.');
-        }
-      }
-      draw();
-    } else if (e.key === 'h' || e.key === 'H') {
-      if (e.shiftKey) {
-        document.body.classList.toggle('hc');
-        localStorage.setItem('farm_hc', document.body.classList.contains('hc') ? '1' : '0');
-      } else {
-        e.preventDefault();
-        setSpeed(0);
-        resetFrameClock();
-        log(world, 'Help: WASD/Arrows(pan) ,(1m) .(10m) N(1d) Space(pause) 1..5(speed presets) C(follow) P(menu) R(reset) Shift+R(new) Shift+H(contrast) Shift+L(buy) Alt+L(sell)');
-        syncSpeedControls();
-        draw();
-      }
-    } else if (e.key === 'Escape') {
-      if (drawerOpen) {
-        e.preventDefault();
-        setDrawerOpen(false);
-      }
-    } else if (e.key === 'F5') {
-      e.preventDefault();
-      saveToLocalStorage(world);
-    } else if (e.key === 'F9') {
-      e.preventDefault();
-      const loaded = loadFromLocalStorage();
-      if (loaded) {
-        world = loaded;
-        world.pathGrid = createPathfindingGrid();
-      }
-      planDay(world);
-      syncUiAfterWorldChange();
-      draw();
-    } else if (e.key === 'F1') { e.preventDefault(); DEBUG.showParcels = !DEBUG.showParcels; draw(); }
-    else if (e.key === 'F2') { e.preventDefault(); DEBUG.showTaskQueue = !DEBUG.showTaskQueue; draw(); }
-    else if (e.key === 'F3') { e.preventDefault(); DEBUG.showKPI = !DEBUG.showKPI; draw(); }
-  });
-}
-
-function init() {
-  const loaded = loadFromLocalStorage();
-  world = loaded || makeWorld(getSeedFromURL());
-  log(world, `Seed: ${world.seed}`);
-  if (!loaded) onNewMonth(world);
-  screenRef = document.getElementById('screen');
-  overlayRef = document.getElementById('debug-overlay');
-  messageRef = document.getElementById('message-stack');
-  drawerRef = document.getElementById('info-drawer');
-  menuToggleRef = document.getElementById('menu-toggle');
-  followButtonRef = document.getElementById('follow-toggle');
-  panelContentRef = document.getElementById('panel-content');
-  panelButtons = Array.from(document.querySelectorAll('#menu .menu-item'));
-  panelButtons.forEach((btn) => {
-    btn.addEventListener('click', () => setActivePanel(btn.dataset.panel));
-  });
-  if (menuToggleRef) {
-    menuToggleRef.addEventListener('click', () => {
-      setDrawerOpen(!drawerOpen);
-      updatePanelContent();
+function setActivePanel(panel) {
+  if (!panel) return;
+  const changed = state.activePanel !== panel;
+  state.activePanel = panel;
+  if (DOM.menu) {
+    const buttons = DOM.menu.querySelectorAll('button[data-panel]');
+    buttons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.panel === panel);
     });
   }
-  if (followButtonRef) {
-    followButtonRef.addEventListener('click', () => {
-      if (!world) return;
-      const following = world.camera?.follow !== false;
-      setFollow(!following);
-      draw();
-    });
+  if (changed) {
+    renderPanel();
   }
-  setDrawerOpen(false);
-  const resizeObserver = new ResizeObserver(() => {
-    resizeOverlayCanvas();
-    measureCharSize();
-    draw();
-  });
-  resizeObserver.observe(screenRef);
-  screenRef.addEventListener('scroll', () => {
-    overlayRef.style.transform = `translate(${-screenRef.scrollLeft}px, ${-screenRef.scrollTop}px)`;
-  });
-  if (new URLSearchParams(location.search).has('hc')) document.body.classList.add('hc');
-  if (localStorage.getItem('farm_hc') === '1') document.body.classList.add('hc');
-  planDay(world);
-  setActivePanel(activePanel);
-  attachDebugToggles();
-  attachSaveHelpers();
-  bindKeyboard();
-  initSpeedControls();
-  window.simulateMonths = simulateMonths;
-  resizeOverlayCanvas();
-  measureCharSize();
-  syncUiAfterWorldChange({ forceCenter: true });
-  draw();
-  resetFrameClock();
-  requestAnimationFrame(onFrame);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+function renderPanel() {
+  if (!DOM.panelContent) return;
+  const renderer = PANEL_RENDERERS[state.activePanel] || (() => '<p>Coming soon.</p>');
+  DOM.panelContent.innerHTML = renderer();
+}
+
+function renderAll() {
+  renderHud();
+  renderScreen();
+  renderPanel();
+}
+
+function boot() {
+  selectDom();
+  initEvents();
+  initWorld();
+  renderAll();
+  setActivePanel(state.activePanel);
+}
+
+document.addEventListener('DOMContentLoaded', boot);

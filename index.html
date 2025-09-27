@@ -10,9 +10,19 @@
   <div id="app">
     <header class="app-header">
       <div class="title">18th Century Farm Simulation</div>
+      <div id="sim-hud" aria-live="polite">
+        <div class="hud-line">
+          <span id="hud-date">Month I, Day 1</span>
+          <span id="hud-time">00:00</span>
+        </div>
+        <div class="hud-line">
+          <span id="hud-labour">Labour: 0 / 640 h</span>
+        </div>
+      </div>
       <div class="header-actions">
         <button id="follow-toggle" type="button" aria-pressed="true" title="Toggle following the farmer">Following Farmer</button>
         <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="info-drawer" title="Open information panels">Open Menu</button>
+        <button id="advance-day" type="button" title="Advance to the next day">Advance Day</button>
       </div>
     </header>
     <div id="main">
@@ -26,6 +36,7 @@
       <aside id="info-drawer" class="drawer" hidden aria-label="Simulation information panels">
         <nav id="menu" aria-label="Information menu">
           <button class="menu-item active" type="button" data-panel="overview">Overview</button>
+          <button class="menu-item" type="button" data-panel="planner">Planner</button>
           <button class="menu-item" type="button" data-panel="inventory">Inventory</button>
           <button class="menu-item" type="button" data-panel="parcels">Parcels</button>
           <button class="menu-item" type="button" data-panel="messages">Messages</button>
