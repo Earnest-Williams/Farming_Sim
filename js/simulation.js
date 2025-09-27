@@ -26,7 +26,8 @@ import {
   endOfDayMonth,
   moistureToMud,
   processFarmerMinute,
-  syncFarmerToActiveParcel,
+  syncFarmerToActive,
+  hasActiveWork,
 } from './tasks.js';
 import { advisorExecute, reprioritiseByVPM, updateKPIs } from './advisor.js';
 import { attachPastureIfNeeded } from './world.js';
@@ -200,7 +201,7 @@ export function planDay(world) {
     advisorExecute(world);
   }
   planDayMonthly(world);
-  syncFarmerToActiveParcel(world);
+  syncFarmerToActive(world);
 }
 
 export function stepOneMinute(world) {
@@ -212,6 +213,8 @@ export function stepOneMinute(world) {
   if (minute >= daylight.workStart && minute <= daylight.workEnd) {
     tickWorkMinute(world);
   }
+
+  if (!hasActiveWork(world)) planDay(world);
 
   world.calendar.minute = (minute + 1);
   if (world.calendar.minute >= MINUTES_PER_DAY) {

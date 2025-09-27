@@ -181,6 +181,28 @@ export function renderColored(world) {
       }
     }
   }
-  putStyled(buf, styleBuf, world.farmer.x - camX, world.farmer.y - camY, '@', SID.FARMER);
+  drawFarmer(buf, styleBuf, world, camX, camY);
+  debugHUD(buf, styleBuf, world);
   return { buf, styleBuf };
+}
+
+function drawFarmer(buf, styleBuf, world, camX, camY) {
+  const farmer = world.farmer || {};
+  const px = farmer.x - camX;
+  const py = farmer.y - camY;
+  if (px < 0 || px >= SCREEN_W || py < 0 || py >= SCREEN_H) return;
+  putStyled(buf, styleBuf, px, py, '@', SID.FARMER);
+  if (farmer.task) {
+    const labelX = Math.min(SCREEN_W - 1, Math.max(0, px + 1));
+    const labelY = Math.max(0, py - 1);
+    label(buf, styleBuf, labelX, labelY, farmer.task, SID.HUD_TEXT);
+  }
+}
+
+function debugHUD(buf, styleBuf, world) {
+  const minute = world.calendar.minute ?? 0;
+  const daylight = world.daylight || { workStart: 0, workEnd: 0 };
+  const slots = (world.farmer?.activeWork ?? []).map(id => id ?? '-').join(',');
+  const line = `m=${minute} ws=${daylight.workStart} we=${daylight.workEnd} slots=[${slots}] task=${world.farmer?.task ?? ''}`;
+  label(buf, styleBuf, 1, 0, line, SID.HUD_TEXT);
 }

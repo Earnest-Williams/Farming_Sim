@@ -11,17 +11,57 @@ import {
 } from './constants.js';
 import { applyTaskEffects } from './state.js';
 
+const SPEEDS = { walk_m_per_min: 70, cart_m_per_min: 120 };
+const OVERHEAD = { load_per_crate_min: 1.2, market_transaction_min: 8 };
+
 export const CREW_SLOTS = CONST_CREW_SLOTS;
 export const LABOUR_DAY_MIN = CONST_LABOUR_DAY_MIN;
 
+function distanceMeters(world, a = { x: 0, y: 0 }, b = { x: 0, y: 0 }) {
+  const scale = world?.grid?.metersPerCell ?? 1;
+  return Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0)) * scale;
+}
+
+function estimateMinutes(world, spec) {
+  if (!spec) return 30;
+  if (spec.kind === TASK_KINDS.CartToMarket) {
+    const farmhouse = world.farmhouse ?? { x: 0, y: 0 };
+    const yard = world.locations?.yard ?? farmhouse;
+    const marketDefault = { x: yard.x + 200, y: yard.y + 50 };
+    const market = world.locations?.market ?? marketDefault;
+    const dGo = distanceMeters(world, yard, market);
+    const dBack = distanceMeters(world, market, yard);
+    const hasCart = Boolean(world.assets?.oxCart);
+    const v = hasCart ? SPEEDS.cart_m_per_min : SPEEDS.walk_m_per_min;
+    const travel = (dGo + dBack) / (v || SPEEDS.walk_m_per_min);
+
+    const payload = spec.payload;
+    const crates = Array.isArray(payload)
+      ? payload.reduce((acc, item) => acc + (item.qty ?? 1), 0)
+      : (payload?.crates ?? 1);
+    const handling = crates * OVERHEAD.load_per_crate_min + OVERHEAD.market_transaction_min;
+
+    return travel + handling;
+  }
+  if (spec.parcelId != null) {
+    const parcel = world.parcels?.[spec.parcelId];
+    if (parcel) return minutesFor(spec.kind, parcel, spec.payload);
+  }
+  return 30;
+}
+
 export function makeTask(world, spec) {
+  const rawEstimate = spec.kind === TASK_KINDS.CartToMarket
+    ? estimateMinutes(world, spec)
+    : (spec.estMin ?? estimateMinutes(world, spec));
+  const estMin = Math.max(1, Math.round(rawEstimate || 1));
   return {
     id: world.nextTaskId++,
     kind: spec.kind,
     parcelId: spec.parcelId ?? null,
     payload: spec.payload || null,
     latestDay: spec.latestDay ?? 20,
-    estMin: spec.estMin,
+    estMin,
     doneMin: 0,
     priority: spec.priority ?? 0,
     status: 'queued',
@@ -43,7 +83,6 @@ export function minutesFor(op, parcel, payload) {
     case TASK_KINDS.CutCloverHay: return WORK_MINUTES.CutCloverHay_perAcre * ACRES(parcel);
     case TASK_KINDS.OrchardHarvest: return WORK_MINUTES.OrchardHarvest_perAcre * ACRES(parcel);
     case TASK_KINDS.CartHay: return WORK_MINUTES.CartHay_perAcre * (parcel?.acres || 0);
-    case TASK_KINDS.CartToMarket: return WORK_MINUTES.CartToMarket;
     default: return 0;
   }
 }
@@ -111,6 +150,18 @@ export function canStartTask(world, task) {
       return Object.values(world.storeSheaves || {}).some(v => v > 0);
     case TASK_KINDS.Thresh:
       return !!world.stackReady && Object.values(world.storeSheaves || {}).some(v => v > 0);
+    case TASK_KINDS.CartToMarket: {
+      const store = world.store || {};
+      const haveGoods = Array.isArray(task.payload)
+        ? task.payload.some(item => (item?.qty ?? 0) > 0)
+        : Object.values(store).some(value => typeof value === 'number' && value > 0);
+      if (!haveGoods) return false;
+      const minute = world.calendar.minute ?? 0;
+      const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
+      if (minute < daylight.workStart || minute > daylight.workEnd) return false;
+      if (world.weather?.rain_mm > 2 && !world.assets?.coveredCart) return false;
+      return true;
+    }
     default:
       if (MUD_SENSITIVE_TASKS.has(task.kind) && p && mudTooHigh(p)) return false;
       return true;
@@ -120,7 +171,12 @@ export function canStartTask(world, task) {
 function scoreTask(world, t) {
   const day = world.calendar.day;
   const slack = Math.max(0, t.latestDay - day);
-  return (t.priority * 1000) + (100 - Math.min(99, slack));
+  let score = (t.priority * 1000) + (100 - Math.min(99, slack));
+  if (t.parcelId != null) {
+    const parcel = world.parcels?.[t.parcelId];
+    if (parcel?.proximity === 'close') score += 2;
+  }
+  return score;
 }
 
 function findTaskById(world, id) {
@@ -184,9 +240,11 @@ export function tickWorkMinute(world) {
   const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
   if (minute < daylight.workStart || minute > daylight.workEnd) {
     if (world.kpi) world.kpi._workOutsideWindow = true;
+    return;
   }
 
   let needsTopUp = false;
+  let needsSync = false;
   for (let s = 0; s < CREW_SLOTS; s++) {
     const id = world.farmer.activeWork[s];
     if (id == null) continue;
@@ -194,6 +252,7 @@ export function tickWorkMinute(world) {
     if (!t) {
       world.farmer.activeWork[s] = null;
       needsTopUp = true;
+      needsSync = true;
       continue;
     }
     t.doneMin += 1;
@@ -204,13 +263,18 @@ export function tickWorkMinute(world) {
     if (t.doneMin >= t.estMin) {
       completeTask(world, t, s);
       needsTopUp = true;
+      needsSync = true;
     }
   }
 
-  if (needsTopUp) topUpActiveSlots(world);
+  if (needsTopUp) {
+    if (topUpActiveSlots(world)) needsSync = true;
+  }
+  if (needsSync) syncFarmerToActive(world);
 }
 
 function topUpActiveSlots(world) {
+  let assigned = false;
   for (let s = 0; s < CREW_SLOTS; s++) {
     if (world.farmer.activeWork[s]) continue;
 
@@ -229,6 +293,7 @@ function topUpActiveSlots(world) {
           world.tasks.month.active.push(task);
           world.farmer.activeWork[s] = task.id;
           found = true;
+          assigned = true;
           break;
         }
         pool.push(task);
@@ -236,6 +301,7 @@ function topUpActiveSlots(world) {
       if (found) break;
     }
   }
+  return assigned;
 }
 
 export function endOfDayMonth(world) {
@@ -261,7 +327,11 @@ export function monthHudInfo(world) {
   return { u, b, q, a, o, nextTxt };
 }
 
-export function syncFarmerToActiveParcel(world) {
+export function hasActiveWork(world) {
+  return world?.farmer?.activeWork?.some(Boolean) ?? false;
+}
+
+export function syncFarmerToActive(world) {
   const farmer = world.farmer;
   if (!farmer) return;
 
@@ -283,21 +353,46 @@ export function syncFarmerToActiveParcel(world) {
     return;
   }
 
-  if (activeTask.parcelId == null) {
-    farmer.task = 'Overseeing non-field task';
-    farmer.queue = [];
+  if (activeTask.kind === TASK_KINDS.CartToMarket) {
+    const farmhouse = world.farmhouse ?? { x: farmer.x, y: farmer.y };
+    const yard = world.locations?.yard ?? farmhouse;
+    const marketDefault = { x: yard.x + 200, y: yard.y + 50 };
+    const market = world.locations?.market ?? marketDefault;
+    farmer.queue = [
+      { type: 'move', x: yard.x, y: yard.y },
+      { type: 'move', x: market.x, y: market.y },
+      { type: 'move', x: yard.x, y: yard.y },
+    ];
     farmer.moveTarget = null;
     farmer.path = [];
+    farmer.task = 'Cart to Market';
+    return;
+  }
+
+  if (activeTask.parcelId == null) {
+    const farmhouse = world.farmhouse ?? { x: farmer.x, y: farmer.y };
+    const yard = world.locations?.yard ?? farmhouse;
+    farmer.queue = [{ type: 'move', x: yard.x, y: yard.y }];
+    farmer.moveTarget = null;
+    farmer.path = [];
+    farmer.task = `Working: ${activeTask.kind}`;
     return;
   }
 
   const parcel = world.parcels[activeTask.parcelId];
-  if (!parcel) return;
+  if (!parcel) {
+    farmer.queue = [];
+    farmer.moveTarget = null;
+    farmer.path = [];
+    farmer.task = `Missing parcel ${activeTask.parcelId}`;
+    return;
+  }
 
-  farmer.queue = [{ type: TASK_KINDS.MOVE, x: parcel.x + 2, y: parcel.y + 2 }];
+  farmer.queue = [{ type: 'move', x: parcel.x + 2, y: parcel.y + 2 }];
   farmer.moveTarget = null;
   farmer.path = [];
-  farmer.task = `Overseeing: ${activeTask.kind}`;
+  const parcelName = parcel.name ?? parcel.key;
+  farmer.task = `Overseeing: ${activeTask.kind} @ ${parcelName}`;
 }
 
 export function processFarmerMinute(world) {
