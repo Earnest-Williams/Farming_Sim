@@ -75,9 +75,49 @@ function chooseFlexAuto(world) {
 function generateMonthlyTasks(world, month) {
   const byKey = world.parcelByKey;
   const P = world.parcels;
+  const sumValues = (obj) => Object.values(obj || {}).reduce((acc, val) => acc + (val || 0), 0);
+  const estimateStandaloneMinutes = (kind, payload) => {
+    switch (kind) {
+      case TASK_KINDS.MoveHerd:
+        return WORK_MINUTES.MoveHerd_flat;
+      case TASK_KINDS.Slaughter: {
+        const count = payload?.count ?? 1;
+        return count * WORK_MINUTES.Slaughter_perHead;
+      }
+      case TASK_KINDS.Thresh: {
+        const sheaves = sumValues(world.storeSheaves);
+        return Math.max(1, sheaves) * WORK_MINUTES.Thresh_perBushel;
+      }
+      case TASK_KINDS.Winnow: {
+        const store = world.store || {};
+        const grain = (store.wheat || 0) + (store.barley || 0) + (store.oats || 0) + (store.pulses || 0);
+        return Math.max(1, grain) * WORK_MINUTES.Winnow_perBushel;
+      }
+      case TASK_KINDS.StackRicks: {
+        const acresWithSheaves = world.parcels.reduce((acc, parcel) => {
+          if ((parcel.fieldStore?.sheaves || 0) > 0) {
+            return acc + (parcel.acres || 0);
+          }
+          return acc;
+        }, 0);
+        if (acresWithSheaves > 0) {
+          return acresWithSheaves * WORK_MINUTES.StackRicks_perAcre;
+        }
+        const sheaves = sumValues(world.storeSheaves);
+        if (sheaves > 0) {
+          return Math.max(1, sheaves / 20) * WORK_MINUTES.StackRicks_perAcre;
+        }
+        return WORK_MINUTES.StackRicks_perAcre;
+      }
+      case TASK_KINDS.Repair:
+        return WORK_MINUTES.Repair_perJob;
+      default:
+        return WORK_MINUTES.Repair_perJob;
+    }
+  };
   const push = (kind, key, payload, latestDay, priority = 5) => {
     const pid = key ? byKey[key] : null;
-    const est = pid != null ? minutesFor(kind, P[pid], payload) : WORK_MINUTES.Repair_perJob;
+    const est = pid != null ? minutesFor(kind, P[pid], payload) : estimateStandaloneMinutes(kind, payload);
     world.tasks.month.queued.push(makeTask(world, { kind, parcelId: pid, payload, latestDay, estMin: est, priority }));
   };
   switch (month) {

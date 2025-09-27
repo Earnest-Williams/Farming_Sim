@@ -121,12 +121,12 @@ export function fromSnapshot(snap) {
   const queuedIds = new Set(world.tasks.month.queued.map(t => t.id));
   for (let i = 0; i < Math.min(slotCount, savedActiveWork.length); i++) {
     const id = savedActiveWork[i];
-    if (!id) continue;
+    if (id == null) continue;
     if (activeIds.has(id)) {
       world.farmer.activeWork[i] = id;
     }
   }
-  const assignedIds = new Set(world.farmer.activeWork.filter(Boolean));
+  const assignedIds = new Set(world.farmer.activeWork.filter(id => id != null));
   const stillActive = [];
   for (const task of world.tasks.month.active) {
     if (assignedIds.has(task.id)) {
@@ -139,7 +139,7 @@ export function fromSnapshot(snap) {
   }
   world.tasks.month.active = stillActive;
   const ensureQueued = (id) => {
-    if (!id || assignedIds.has(id) || queuedIds.has(id)) return;
+    if (id == null || assignedIds.has(id) || queuedIds.has(id)) return;
     const idx = world.tasks.month.overdue.findIndex(t => t.id === id);
     if (idx !== -1) {
       const [task] = world.tasks.month.overdue.splice(idx, 1);
