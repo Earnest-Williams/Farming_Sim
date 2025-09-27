@@ -3,11 +3,11 @@ export const SPEEDS = {
   VERY_SLOW: 0.03,
   SLOW: 0.06,
   NORMAL: 0.12,
-  FAST: 0.5,
-  ULTRA: 2.0,
+  FAST: 0.50,
+  ULTRA: 2.00,
 };
 
-let current = SPEEDS.VERY_SLOW;
+let current = 1.0;
 
 export function setSpeed(value) {
   current = Math.max(0, Number.isFinite(value) ? value : 0);

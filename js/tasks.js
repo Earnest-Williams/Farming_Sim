@@ -410,7 +410,7 @@ export function syncFarmerToActive(world) {
   farmer.task = `Working: ${activeTask.kind}`;
 }
 
-export function processFarmerMinute(world) {
+export function processFarmerHalfStep(world) {
   const farmer = world.farmer;
   if (!farmer || !Array.isArray(farmer.queue) || farmer.queue.length === 0) return;
 
