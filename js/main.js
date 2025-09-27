@@ -430,14 +430,20 @@ function drawDebugOverlay(w, canvas) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.font = '12px ui-monospace';
   const lineH = 14;
-  const padding = 12;
+  const paddingLeft = Number.isFinite(charSize.paddingLeft)
+    ? charSize.paddingLeft
+    : parseFloat(getComputedStyle(screenRef).paddingLeft) || 0;
+  const paddingTop = Number.isFinite(charSize.paddingTop)
+    ? charSize.paddingTop
+    : parseFloat(getComputedStyle(screenRef).paddingTop) || 0;
+  const overlayMargin = 4;
   const camX = Math.round(w.camera.x);
   const camY = Math.round(w.camera.y);
 
   if (DEBUG.showParcels) {
     for (const p of w.parcels) {
-      const pSX = (p.x - camX) * charSize.width + padding;
-      const pSY = (p.y - camY) * charSize.height + padding;
+      const pSX = (p.x - camX) * charSize.width + paddingLeft;
+      const pSY = (p.y - camY) * charSize.height + paddingTop;
       const pSW = p.w * charSize.width;
       const pSH = p.h * charSize.height;
       if (pSX + pSW < 0 || pSX > canvas.width || pSY + pSH < 0 || pSY > canvas.height) continue;
@@ -463,18 +469,18 @@ function drawDebugOverlay(w, canvas) {
   if (DEBUG.showTaskQueue) {
     const q = w.tasks.month.queued.slice(0, 8).map(t => `${t.kind}(${t.latestDay}) p:${t.priority}`);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(8, 8, 360, 14 + lineH * q.length);
+    ctx.fillRect(paddingLeft - overlayMargin, paddingTop - overlayMargin, 360, 14 + lineH * q.length);
     ctx.fillStyle = '#ddd';
-    ctx.fillText('Queue:', 14, 20);
-    q.forEach((l, i) => ctx.fillText(l, 14, 34 + lineH * i));
+    ctx.fillText('Queue:', paddingLeft + 2, paddingTop + 8);
+    q.forEach((l, i) => ctx.fillText(l, paddingLeft + 2, paddingTop + 22 + lineH * i));
   }
 
   if (DEBUG.showKPI) {
     const line = advisorHud(w);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(8, 120, 880, 20);
+    ctx.fillRect(paddingLeft - overlayMargin, paddingTop + 108, 880, 20);
     ctx.fillStyle = '#ddd';
-    ctx.fillText(line, 14, 135);
+    ctx.fillText(line, paddingLeft + 2, paddingTop + 123);
   }
 }
 
@@ -490,13 +496,19 @@ function draw() {
 }
 
 function measureCharSize() {
+  const style = getComputedStyle(screenRef);
   const temp = document.createElement('span');
   temp.textContent = 'M';
-  temp.style.font = getComputedStyle(screenRef).font;
+  temp.style.font = style.font;
   temp.style.position = 'absolute';
   temp.style.visibility = 'hidden';
   document.body.appendChild(temp);
-  charSize = { width: temp.offsetWidth, height: temp.offsetHeight };
+  charSize = {
+    width: temp.offsetWidth,
+    height: temp.offsetHeight,
+    paddingLeft: parseFloat(style.paddingLeft) || 0,
+    paddingTop: parseFloat(style.paddingTop) || 0,
+  };
   document.body.removeChild(temp);
 }
 
