@@ -18,6 +18,7 @@ import {
   ACRES,
   ROWS
 } from './constants.js';
+import { computeDaylightByIndex } from './time.js';
 
 const SCREEN_W = CONFIG.SCREEN.W;
 const SCREEN_H = CONFIG.SCREEN.H;
@@ -208,6 +209,7 @@ export function kpiInit(world) {
     month_required_min_left: 0,
     warnings: [],
     suggestions: [],
+    _workOutsideWindow: false,
   };
 }
 
@@ -285,22 +287,6 @@ function initEstate(world) {
   world.parcels[byKey.homestead].status.cropNote = 'Byres + garden prepped';
   world.parcels[byKey.orchard].status.cropNote = 'Buds just breaking';
   world.parcels[byKey.coppice].status.cropNote = 'Poles seasoning; stools sprouting';
-}
-
-export function computeDaylightByIndex(dayIndex) {
-  const stepIdx = Math.floor(dayIndex / CONFIG.DAYLIGHT.snapDays);
-  const stepped = stepIdx * CONFIG.DAYLIGHT.snapDays + Math.floor(CONFIG.DAYLIGHT.snapDays / 2);
-  const angle = 2 * Math.PI * ((stepped - 60) / DAYS_PER_YEAR);
-  const dayLen = clamp(CONFIG.DAYLIGHT.baseHours + CONFIG.DAYLIGHT.amplitude * Math.cos(angle), 8, 16);
-  const sunrise = Math.round((12 - dayLen / 2) * 60);
-  const sunset = Math.round((12 + dayLen / 2) * 60);
-  return {
-    sunrise,
-    sunset,
-    workStart: Math.max(0, sunrise - CONFIG.DAYLIGHT.bufferMin),
-    workEnd: Math.min(24 * 60, sunset + CONFIG.DAYLIGHT.bufferMin),
-    dayLenHours: dayLen,
-  };
 }
 
 export function makeWorld(seed) {

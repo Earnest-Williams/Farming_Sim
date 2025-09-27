@@ -1,6 +1,18 @@
 import { log } from './utils.js';
-import { TASK_KINDS, WORK_MINUTES, ACRES, ROWS, CREW_SLOTS, SOIL } from './constants.js';
+import {
+  TASK_KINDS,
+  WORK_MINUTES,
+  ACRES,
+  ROWS,
+  CREW_SLOTS as CONST_CREW_SLOTS,
+  SOIL,
+  LABOUR_DAY_MIN as CONST_LABOUR_DAY_MIN,
+  MINUTES_PER_DAY,
+} from './constants.js';
 import { applyTaskEffects } from './state.js';
+
+export const CREW_SLOTS = CONST_CREW_SLOTS;
+export const LABOUR_DAY_MIN = CONST_LABOUR_DAY_MIN;
 
 export function makeTask(world, spec) {
   return {
@@ -68,36 +80,39 @@ export function canStartTask(world, task) {
   const p = task.parcelId != null ? world.parcels[task.parcelId] : null;
   if (PARCEL_REQUIRED_TASKS.has(task.kind) && !p) return false;
 
-  if (MUD_SENSITIVE_TASKS.has(task.kind) && mudTooHigh(p)) return false;
-
   switch (task.kind) {
     case TASK_KINDS.PloughPlot:
-      return true;
+      return !!p && !mudTooHigh(p);
     case TASK_KINDS.HarrowPlot:
+      if (!p || mudTooHigh(p)) return false;
       return p.status.lastPloughedOn != null || (p.status.tilth || 0) >= 0.2;
     case TASK_KINDS.Sow:
+      if (!p || mudTooHigh(p)) return false;
       if (!p.rows?.length) return false;
       return p.rows.every(r => !r.crop) && (p.status.tilth || 0) >= 0.2;
     case TASK_KINDS.DrillPlot:
-      return (p.rows?.length || 0) > 0;
+      return !!p && !mudTooHigh(p) && (p.rows?.length || 0) > 0;
     case TASK_KINDS.CutCloverHay:
-      return world.weather.rain_mm <= 0.2;
+      return !!p && world.weather.rain_mm <= 0.2;
     case TASK_KINDS.CartHay: {
+      if (!p) return false;
       const h = p.hayCuring;
       return !!h && h.dryness >= 1 && world.weather.rain_mm <= 0.2;
     }
     case TASK_KINDS.HoeRow:
-      return !!p.rows?.some(r => r.crop);
+      return !!p && !mudTooHigh(p) && p.rows?.some(r => r.crop);
     case TASK_KINDS.HarvestParcel:
-      if (!p.rows?.length) return false;
+      if (!p || !p.rows?.length) return false;
       return p.rows.every(r => r.crop && r.growth >= 1.0);
     case TASK_KINDS.CartSheaves:
+      if (!p || mudTooHigh(p)) return false;
       return (p.fieldStore?.sheaves || 0) > 0;
     case TASK_KINDS.StackRicks:
       return Object.values(world.storeSheaves || {}).some(v => v > 0);
     case TASK_KINDS.Thresh:
       return !!world.stackReady && Object.values(world.storeSheaves || {}).some(v => v > 0);
     default:
+      if (MUD_SENSITIVE_TASKS.has(task.kind) && p && mudTooHigh(p)) return false;
       return true;
   }
 }
@@ -165,6 +180,12 @@ export function completeTask(world, task, slotIndex) {
 }
 
 export function tickWorkMinute(world) {
+  const minute = world.calendar.minute ?? 0;
+  const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
+  if (minute < daylight.workStart || minute > daylight.workEnd) {
+    if (world.kpi) world.kpi._workOutsideWindow = true;
+  }
+
   let needsTopUp = false;
   for (let s = 0; s < CREW_SLOTS; s++) {
     const id = world.farmer.activeWork[s];
@@ -178,7 +199,7 @@ export function tickWorkMinute(world) {
     t.doneMin += 1;
     world.labour.usedMin += 1;
     if (maybeToolBreak(world, t)) {
-      // tool break handled
+      // optional stochastic repair handled inside maybeToolBreak
     }
     if (t.doneMin >= t.estMin) {
       completeTask(world, t, s);
@@ -186,29 +207,33 @@ export function tickWorkMinute(world) {
     }
   }
 
-  if (!needsTopUp) return;
+  if (needsTopUp) topUpActiveSlots(world);
+}
 
+function topUpActiveSlots(world) {
   for (let s = 0; s < CREW_SLOTS; s++) {
-    if (world.farmer.activeWork[s] != null) continue;
+    if (world.farmer.activeWork[s]) continue;
+
     let task;
-    let foundAndAssigned = false;
+    let found = false;
     const pools = [world.tasks.month.overdue, world.tasks.month.queued];
+
     for (const pool of pools) {
       pool.sort((a, b) => scoreTask(world, b) - scoreTask(world, a));
       let guard = pool.length;
       while (guard-- > 0) {
         task = pool.shift();
+        if (!task) continue;
         if (canStartTask(world, task)) {
           task.status = 'active';
           world.tasks.month.active.push(task);
           world.farmer.activeWork[s] = task.id;
-          foundAndAssigned = true;
+          found = true;
           break;
-        } else {
-          pool.push(task);
         }
+        pool.push(task);
       }
-      if (foundAndAssigned) break;
+      if (found) break;
     }
   }
 }
@@ -234,4 +259,58 @@ export function monthHudInfo(world) {
   const next = world.tasks.month.queued[0];
   const nextTxt = next ? `${next.kind} d${next.latestDay}` : '—';
   return { u, b, q, a, o, nextTxt };
+}
+
+export function syncFarmerToActiveParcel(world) {
+  const farmer = world.farmer;
+  if (!farmer) return;
+
+  const firstActiveId = farmer.activeWork.find(Boolean);
+  if (!firstActiveId) {
+    farmer.task = world.tasks.month.queued.length ? 'Waiting for conditions' : 'Idle';
+    farmer.queue = [];
+    farmer.moveTarget = null;
+    farmer.path = [];
+    return;
+  }
+
+  const activeTask = world.tasks.month.active.find(t => t.id === firstActiveId);
+  if (!activeTask) {
+    farmer.task = 'Overseeing non-field task';
+    farmer.queue = [];
+    farmer.moveTarget = null;
+    farmer.path = [];
+    return;
+  }
+
+  if (activeTask.parcelId == null) {
+    farmer.task = 'Overseeing non-field task';
+    farmer.queue = [];
+    farmer.moveTarget = null;
+    farmer.path = [];
+    return;
+  }
+
+  const parcel = world.parcels[activeTask.parcelId];
+  if (!parcel) return;
+
+  farmer.queue = [{ type: TASK_KINDS.MOVE, x: parcel.x + 2, y: parcel.y + 2 }];
+  farmer.moveTarget = null;
+  farmer.path = [];
+  farmer.task = `Overseeing: ${activeTask.kind}`;
+}
+
+export function processFarmerMinute(world) {
+  const farmer = world.farmer;
+  if (!farmer || !Array.isArray(farmer.queue) || farmer.queue.length === 0) return;
+
+  const tgt = farmer.queue[0];
+  const dx = Math.sign(tgt.x - farmer.x);
+  const dy = Math.sign(tgt.y - farmer.y);
+  farmer.x += dx;
+  farmer.y += dy;
+
+  if (farmer.x === tgt.x && farmer.y === tgt.y) {
+    farmer.queue.shift();
+  }
 }

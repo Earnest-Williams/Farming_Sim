@@ -1,6 +1,5 @@
 import { clamp, clamp01, lerp, log, randomNormal } from './utils.js';
 import {
-  CONFIG,
   CROPS,
   WORK_MINUTES,
   TASK_KINDS,
@@ -15,41 +14,25 @@ import {
   PARCEL_KIND,
   DAYS_PER_MONTH,
   MONTHS_PER_YEAR,
-  MINUTES_PER_DAY,
   seasonOfMonth,
   DAYS_PER_YEAR,
 } from './constants.js';
-import { makeWorld, computeDaylightByIndex, findPath } from './world.js';
-import { makeTask, minutesFor, planDayMonthly, tickWorkMinute, endOfDayMonth, moistureToMud } from './tasks.js';
+import { makeWorld } from './world.js';
+import {
+  makeTask,
+  minutesFor,
+  planDayMonthly,
+  tickWorkMinute,
+  endOfDayMonth,
+  moistureToMud,
+  processFarmerMinute,
+  syncFarmerToActiveParcel,
+} from './tasks.js';
 import { advisorExecute, reprioritiseByVPM, updateKPIs } from './advisor.js';
 import { attachPastureIfNeeded } from './world.js';
 import { rowGrowthMultiplier } from './state.js';
 import { autosave } from './persistence.js';
-
-export function processFarmerMinute(world) {
-  const f = world.farmer;
-  if (f.moveTarget && (!f.path || f.path.length === 0)) {
-    f.path = findPath(world.pathGrid, { x: f.x, y: f.y }, f.moveTarget);
-    if (!f.path) {
-      log(world, `Cannot find path to ${f.moveTarget.x},${f.moveTarget.y}. Aborting move.`);
-      f.moveTarget = null;
-      f.queue = [];
-    }
-  }
-  if (f.path && f.path.length > 0) {
-    for (let i = 0; i < CONFIG.FARMER_SPEED; i++) {
-      if (f.path.length > 0) {
-        const nextPos = f.path.shift();
-        f.x = nextPos.x;
-        f.y = nextPos.y;
-      }
-    }
-    if (f.path.length === 0) f.moveTarget = null;
-    return;
-  }
-  const next = f.queue.shift();
-  if (next && next.type === TASK_KINDS.MOVE) f.moveTarget = { x: next.x, y: next.y };
-}
+import { MINUTES_PER_DAY, computeDaylightByIndex, dayIndex } from './time.js';
 
 function chooseFlex(world, option) {
   world.flexChoice = option;
@@ -217,6 +200,25 @@ export function planDay(world) {
     advisorExecute(world);
   }
   planDayMonthly(world);
+  syncFarmerToActiveParcel(world);
+}
+
+export function stepOneMinute(world) {
+  const minute = world.calendar.minute ?? 0;
+  const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
+
+  processFarmerMinute(world);
+
+  if (minute >= daylight.workStart && minute <= daylight.workEnd) {
+    tickWorkMinute(world);
+  }
+
+  world.calendar.minute = (minute + 1);
+  if (world.calendar.minute >= MINUTES_PER_DAY) {
+    world.calendar.minute = 0;
+    dailyTurn(world);
+    planDay(world);
+  }
 }
 
 export function pastureRegrow(world) {
@@ -391,14 +393,14 @@ export function dailyTurn(world) {
     }
     onNewMonth(world);
   }
-  world.daylight = computeDaylightByIndex((world.calendar.month - 1) * DAYS_PER_MONTH + (world.calendar.day - 1));
+  const daylightIdx = dayIndex(world.calendar.day, world.calendar.month);
+  world.daylight = computeDaylightByIndex(daylightIdx);
 
   if (world.store.wheat > 0) world.store.wheat = Math.max(0, world.store.wheat - DEMAND.household_wheat_bu_per_day);
 
   dailyWeatherEvents(world);
   endOfDayMonth(world);
   updateKPIs(world);
-  planDay(world);
   autosave(world);
 }
 
@@ -434,9 +436,14 @@ export function endOfYear(world) {
 
 export function simulateMonths(seed = 12345, months = 8) {
   let w = makeWorld(seed);
+  onNewMonth(w);
+  planDay(w);
   const results = [];
   for (let i = 0; i < months; i++) {
-    for (let d = 0; d < DAYS_PER_MONTH; d++) dailyTurn(w);
+    for (let d = 0; d < DAYS_PER_MONTH; d++) {
+      dailyTurn(w);
+      planDay(w);
+    }
     results.push({
       month: w.calendar.month,
       wheat: w.store.wheat | 0,
