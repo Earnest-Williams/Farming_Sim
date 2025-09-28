@@ -13,6 +13,10 @@ export const MONTHS_PER_YEAR = CALENDAR.MONTHS.length;
 
 export const MINUTES_PER_DAY = PACK_TIME.daySimMin;
 
+const MINUTES_PER_HOUR = PACK_TIME.minutesPerHour ?? 60;
+const MINUTES_PER_MONTH = MINUTES_PER_DAY * DAYS_PER_MONTH;
+const MINUTES_PER_YEAR = MINUTES_PER_MONTH * MONTHS_PER_YEAR;
+
 const DEFAULT_WORK_START_MIN = PACK_TIME.workStartMin;
 const DEFAULT_WORK_END_MIN = PACK_TIME.workEndMin;
 
@@ -113,10 +117,14 @@ export const SIM = Object.freeze({
 });
 
 const state = {
-  monthIndex: 0,
-  day: 1,
-  minute: 0,
-  year: 1,
+  totalSimMin: 0,
+  calendar: {
+    monthIndex: 0,
+    month: CALENDAR.MONTHS[0],
+    day: 1,
+    minute: 0,
+    year: 1,
+  },
 };
 
 function clampMonthIndex(idx) {
@@ -125,72 +133,92 @@ function clampMonthIndex(idx) {
 }
 
 export function resetTime() {
-  state.monthIndex = 0;
-  state.day = 1;
-  state.minute = 0;
-  state.year = 1;
-  return getSimTime();
+  return syncSimTime(0);
 }
 
-export function setSimTime({ monthIndex = 0, day = 1, minute = 0, year = 1 } = {}) {
-  state.monthIndex = clampMonthIndex(monthIndex);
-  state.day = Math.max(1, Math.min(CALENDAR.DAYS_PER_MONTH, Math.floor(day)));
-  state.minute = Math.max(0, Math.min(MINUTES_PER_DAY - 1, Math.floor(minute)));
-  state.year = Math.max(1, Math.floor(year));
-  return getSimTime();
+function monthIndexFromValue(value) {
+  if (Number.isFinite(value)) {
+    const idx = Math.floor(value);
+    if (idx >= 0 && idx < MONTHS_PER_YEAR) return idx;
+    if (idx >= 1 && idx <= MONTHS_PER_YEAR) return clampMonthIndex(idx - 1);
+  }
+  if (typeof value === 'string') {
+    const idx = CALENDAR.MONTHS.indexOf(value);
+    if (idx >= 0) return idx;
+  }
+  return 0;
 }
 
-export function getSimTime() {
+function calendarFromTotal(totalSimMin) {
+  const safeTotal = Math.max(0, Number.isFinite(totalSimMin) ? totalSimMin : 0);
+  const yearsElapsed = Math.floor(safeTotal / MINUTES_PER_YEAR);
+  const year = yearsElapsed + 1;
+  let remainder = safeTotal - yearsElapsed * MINUTES_PER_YEAR;
+
+  let monthIndex = Math.floor(remainder / MINUTES_PER_MONTH);
+  if (monthIndex >= MONTHS_PER_YEAR) monthIndex = MONTHS_PER_YEAR - 1;
+  remainder -= monthIndex * MINUTES_PER_MONTH;
+
+  let day = Math.floor(remainder / MINUTES_PER_DAY);
+  if (day >= DAYS_PER_MONTH) day = DAYS_PER_MONTH - 1;
+  remainder -= day * MINUTES_PER_DAY;
+
+  const minute = remainder;
+
   return {
-    monthIndex: state.monthIndex,
-    month: CALENDAR.MONTHS[state.monthIndex],
-    day: state.day,
-    minute: state.minute,
-    year: state.year,
+    monthIndex,
+    month: CALENDAR.MONTHS[monthIndex] ?? CALENDAR.MONTHS[0],
+    day: day + 1,
+    minute,
+    year,
   };
 }
 
-function advanceDay(by = 1) {
-  let remaining = by;
-  while (remaining > 0) {
-    state.day += 1;
-    if (state.day > CALENDAR.DAYS_PER_MONTH) {
-      state.day = 1;
-      state.monthIndex = clampMonthIndex(state.monthIndex + 1);
-      if (state.monthIndex === 0) {
-        state.year += 1;
-      }
-    }
-    remaining -= 1;
-  }
+function totalFromCalendar({ monthIndex = 0, day = 1, minute = 0, year = 1 } = {}) {
+  const safeYear = Math.max(1, Math.floor(Number.isFinite(year) ? year : 1));
+  const idx = monthIndexFromValue(monthIndex);
+  const safeDay = Math.max(1, Math.min(DAYS_PER_MONTH, Math.floor(Number.isFinite(day) ? day : 1)));
+  const safeMinute = Math.max(0, Math.min(MINUTES_PER_DAY, Number.isFinite(minute) ? minute : 0));
+  const yearOffset = (safeYear - 1) * MINUTES_PER_YEAR;
+  const monthOffset = idx * MINUTES_PER_MONTH;
+  const dayOffset = (safeDay - 1) * MINUTES_PER_DAY;
+  return yearOffset + monthOffset + dayOffset + safeMinute;
 }
 
-export function advanceSimMinutes(minutes) {
-  let remaining = minutes;
-  while (remaining > 0) {
-    const delta = Math.min(remaining, MINUTES_PER_DAY - state.minute);
-    state.minute += delta;
-    remaining -= delta;
-    if (state.minute >= MINUTES_PER_DAY) {
-      state.minute -= MINUTES_PER_DAY;
-      advanceDay(1);
-    }
-  }
+function syncFromTotal(totalSimMin) {
+  state.totalSimMin = Math.max(0, Number.isFinite(totalSimMin) ? totalSimMin : 0);
+  state.calendar = calendarFromTotal(state.totalSimMin);
   return getSimTime();
 }
 
-export function tickSim(dtRealMs) {
-  if (!Number.isFinite(dtRealMs) || dtRealMs <= 0) {
+export function syncSimTime(simMinutes) {
+  return syncFromTotal(simMinutes);
+}
+
+export function nowSimMin() {
+  return state.totalSimMin;
+}
+
+export function setSimTime({ monthIndex = 0, day = 1, minute = 0, year = 1 } = {}) {
+  const total = totalFromCalendar({ monthIndex, day, minute, year });
+  return syncFromTotal(total);
+}
+
+export function advanceSimMinutes(minutes) {
+  if (!Number.isFinite(minutes) || minutes === 0) {
     return getSimTime();
   }
-  const realMinutes = dtRealMs / PACK_TIME.realMsPerMinute;
-  const simMinutes = realMinutes * SIM.MIN_PER_REAL_MIN;
-  return advanceSimMinutes(simMinutes);
+  const total = state.totalSimMin + minutes;
+  return syncFromTotal(total);
+}
+
+export function getSimTime() {
+  return { ...state.calendar };
 }
 
 export function formatSimTime() {
   const { month, day, minute } = getSimTime();
-  const hours = String(Math.floor(minute / PACK_TIME.minutesPerHour)).padStart(2, '0');
-  const mins = String(Math.floor(minute % PACK_TIME.minutesPerHour)).padStart(2, '0');
+  const hours = String(Math.floor(minute / MINUTES_PER_HOUR)).padStart(2, '0');
+  const mins = String(Math.floor(minute % MINUTES_PER_HOUR)).padStart(2, '0');
   return { label: `Month ${month}, Day ${day}`, time: `${hours}:${mins}` };
 }
