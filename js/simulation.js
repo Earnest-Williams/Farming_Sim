@@ -113,7 +113,7 @@ function generateMonthlyTasks(world, month) {
       push(TASK_KINDS.HarrowPlot, 'barley_clover', {}, 12, 7);
       push(TASK_KINDS.Sow, 'barley_clover', { crop: 'BARLEY', companion: 'CLOVER' }, 16, 9);
       push(TASK_KINDS.Sow, 'pulses', { crop: 'PULSES' }, 18, 8);
-      push(TASK_KINDS.Sow, 'close_a', { crop: 'OATS' }, 16, 8);
+      push(TASK_KINDS.Sow, 'oats_close', { crop: 'OATS' }, 16, 8);
       push(TASK_KINDS.GardenSow, 'homestead', { items: ['onions', 'cabbages', 'carrots'] }, 18, 4);
       push(TASK_KINDS.MoveHerd, null, { herd: 'sheep', from: 'turnips', to: 'clover_hay' }, 4, 10);
       if (!world.flexChoice) chooseFlexAuto(world);
@@ -121,7 +121,7 @@ function generateMonthlyTasks(world, month) {
     case 2:
       push(TASK_KINDS.DrillPlot, 'turnips', {}, 10, 9);
       push(TASK_KINDS.HoeRow, 'pulses', {}, 18, 6);
-      push(TASK_KINDS.HoeRow, 'close_a', {}, 18, 6);
+      push(TASK_KINDS.HoeRow, 'oats_close', {}, 18, 6);
       push(TASK_KINDS.GardenSow, 'homestead', { items: ['succession'] }, 18, 3);
       push(TASK_KINDS.Repair, null, { scope: 'hedge_ditch' }, 18, 2);
       if (!world.flexChoice) chooseFlexAuto(world);
@@ -135,8 +135,8 @@ function generateMonthlyTasks(world, month) {
     case 4:
       push(TASK_KINDS.HarvestParcel, 'barley_clover', {}, 16, 10);
       push(TASK_KINDS.CartSheaves, 'barley_clover', {}, 18, 9);
-      push(TASK_KINDS.HarvestParcel, 'close_a', {}, 16, 9);
-      push(TASK_KINDS.CartSheaves, 'close_a', {}, 18, 8);
+      push(TASK_KINDS.HarvestParcel, 'oats_close', {}, 16, 9);
+      push(TASK_KINDS.CartSheaves, 'oats_close', {}, 18, 8);
       push(TASK_KINDS.HarvestParcel, 'pulses', {}, 18, 6);
       push(TASK_KINDS.CartSheaves, 'pulses', {}, 19, 5);
       if (world.flexChoice) {
@@ -342,7 +342,7 @@ export function dailyWeatherEvents(world) {
   }
   if (m >= 3 && m <= 5 && w.wind_ms >= 10) {
     const hit = [];
-    for (const key of ['barley_clover', 'close_a', 'pulses', 'flex', 'wheat']) {
+    for (const key of ['barley_clover', 'oats_close', 'pulses', 'flex', 'wheat']) {
       const p = world.parcels[world.parcelByKey[key]];
       if (!p || !p.rows?.length) continue;
       const matureish = p.rows.some(r => r.crop && r.growth > 0.6);

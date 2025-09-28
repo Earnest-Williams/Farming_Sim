@@ -11,13 +11,13 @@ import {
 
 export const MONTHLY_PLAN = {
   I: [
-    { op: 'plough+harrow', fields: ['barley_clover', 'pulses', 'close_a'] },
+    { op: 'plough+harrow', fields: ['barley_clover', 'pulses', 'oats_close'] },
     {
       op: 'sow',
       pairs: [
         ['barley_clover', 'barley+clover'],
         ['pulses', 'beans/peas/vetch'],
-        ['close_a', 'oats'],
+        ['oats_close', 'oats'],
       ],
     },
     { op: 'garden_plant', what: ['onions', 'cabbages', 'carrots'], parcel: 'homestead' },
