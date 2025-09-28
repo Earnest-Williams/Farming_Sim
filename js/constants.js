@@ -221,4 +221,12 @@ export const CROPS = {
 
 export const ROTATION = [CROPS.TURNIPS, CROPS.BARLEY, CROPS.CLOVER, CROPS.WHEAT];
 
-export const LIVESTOCK_START = { horses:2, oxen:3, cows:2, bull:1, sheep:36, geese:16, poultry:24 };
+export const LIVESTOCK_START = {
+  horses: 2,
+  oxen: 3,
+  cows: 2,
+  bull: 1,
+  sheep: 36,
+  geese: 16,
+  poultry: 24
+};
