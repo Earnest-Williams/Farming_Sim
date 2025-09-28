@@ -1,26 +1,24 @@
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+
+const PACK_TIME = CONFIG_PACK_V1.time;
+const PACK_CALENDAR = CONFIG_PACK_V1.calendar;
+
 export const CALENDAR = Object.freeze({
-  MONTHS: Object.freeze(["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]),
-  DAYS_PER_MONTH: 20,
+  MONTHS: Object.freeze([...PACK_CALENDAR.months]),
+  DAYS_PER_MONTH: PACK_CALENDAR.daysPerMonth,
 });
 
 export const DAYS_PER_MONTH = CALENDAR.DAYS_PER_MONTH;
 export const MONTHS_PER_YEAR = CALENDAR.MONTHS.length;
 
-export const MINUTES_PER_DAY = 24 * 60;
+export const MINUTES_PER_DAY = PACK_TIME.daySimMin;
 
-const DEFAULT_WORK_START_MIN = 6 * 60;
-const DEFAULT_WORK_END_MIN = 18 * 60;
+const DEFAULT_WORK_START_MIN = PACK_TIME.workStartMin;
+const DEFAULT_WORK_END_MIN = PACK_TIME.workEndMin;
 
-const DAYLIGHT_ANCHORS = Object.freeze([
-  Object.freeze({ monthIndex: 0, workStart: 6 * 60, workEnd: 18 * 60 }),
-  Object.freeze({ monthIndex: 1, workStart: 5 * 60 + 30, workEnd: 19 * 60 + 30 }),
-  Object.freeze({ monthIndex: 2, workStart: 5 * 60, workEnd: 20 * 60 + 30 }),
-  Object.freeze({ monthIndex: 3, workStart: 4 * 60 + 45, workEnd: 21 * 60 }),
-  Object.freeze({ monthIndex: 4, workStart: 5 * 60 + 15, workEnd: 20 * 60 + 30 }),
-  Object.freeze({ monthIndex: 5, workStart: 5 * 60 + 45, workEnd: 19 * 60 + 30 }),
-  Object.freeze({ monthIndex: 6, workStart: 6 * 60 + 30, workEnd: 18 * 60 }),
-  Object.freeze({ monthIndex: 7, workStart: 7 * 60 + 15, workEnd: 17 * 60 }),
-]);
+const DAYLIGHT_ANCHORS = Object.freeze(
+  (PACK_TIME.daylightAnchors || []).map((anchor) => Object.freeze({ ...anchor }))
+);
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -43,7 +41,7 @@ function buildDaylightSchedule() {
         workStart,
         workEnd,
         dayLenMinutes,
-        dayLenHours: dayLenMinutes / 60,
+        dayLenHours: dayLenMinutes / PACK_TIME.minutesPerHour,
       }));
     }
   }
@@ -56,7 +54,7 @@ const DAYLIGHT_DEFAULT = Object.freeze({
   workStart: DEFAULT_WORK_START_MIN,
   workEnd: DEFAULT_WORK_END_MIN,
   dayLenMinutes: DEFAULT_WORK_END_MIN - DEFAULT_WORK_START_MIN,
-  dayLenHours: (DEFAULT_WORK_END_MIN - DEFAULT_WORK_START_MIN) / 60,
+  dayLenHours: (DEFAULT_WORK_END_MIN - DEFAULT_WORK_START_MIN) / PACK_TIME.minutesPerHour,
 });
 
 const DAYLIGHT_BOUNDS = Object.freeze({
@@ -110,8 +108,8 @@ export function dayIndex(day = 1, month = 1) {
 }
 
 export const SIM = Object.freeze({
-  MIN_PER_REAL_MIN: 60,
-  STEP_MIN: 0.5,
+  MIN_PER_REAL_MIN: PACK_TIME.simMinPerRealMin,
+  STEP_MIN: PACK_TIME.tickSimMin,
 });
 
 const state = {
@@ -185,14 +183,14 @@ export function tickSim(dtRealMs) {
   if (!Number.isFinite(dtRealMs) || dtRealMs <= 0) {
     return getSimTime();
   }
-  const realMinutes = dtRealMs / 60000;
+  const realMinutes = dtRealMs / PACK_TIME.realMsPerMinute;
   const simMinutes = realMinutes * SIM.MIN_PER_REAL_MIN;
   return advanceSimMinutes(simMinutes);
 }
 
 export function formatSimTime() {
   const { month, day, minute } = getSimTime();
-  const hours = String(Math.floor(minute / 60)).padStart(2, '0');
-  const mins = String(Math.floor(minute % 60)).padStart(2, '0');
+  const hours = String(Math.floor(minute / PACK_TIME.minutesPerHour)).padStart(2, '0');
+  const mins = String(Math.floor(minute % PACK_TIME.minutesPerHour)).padStart(2, '0');
   return { label: `Month ${month}, Day ${day}`, time: `${hours}:${mins}` };
 }

@@ -1,20 +1,31 @@
 import { PRICES, DAYS_PER_MONTH } from './constants.js';
 import { MINUTES_PER_DAY, CALENDAR } from './time.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 
-const MOVE_MIN_PER_STEP = 0.5;
-const LOAD_UNLOAD_MIN = 20;
-const DEFAULT_LABOUR_VALUE_PER_MIN = 0.1;
-const DEFAULT_CART_CAPACITY = 60;
-const DEFAULT_COOLDOWN_MIN = 12 * 60;
-const DEFAULT_MANIFEST_VALUE_MIN = 20;
+const PACK = CONFIG_PACK_V1;
+const RULES = PACK.rules || {};
+const MOVE_MIN_PER_STEP = PACK.labour?.travelStepSimMin ?? 0;
+const LOAD_UNLOAD_MIN = PACK.rates?.loadUnloadMarket ?? 0;
+const DEFAULT_LABOUR_VALUE_PER_MIN = RULES.labourValuePerMin ?? 0;
+const DEFAULT_CART_CAPACITY = RULES.cartCapacity ?? 0;
+const DEFAULT_COOLDOWN_MIN = RULES.marketCooldownSimMin ?? 0;
+const DEFAULT_MANIFEST_VALUE_MIN = RULES.manifestValueMin ?? 0;
+const PRICE_DRIFT_MONTHS = new Set(RULES.priceDrift?.months || []);
+const PRICE_DRIFT_FACTOR = RULES.priceDrift?.factor ?? 0;
+const MARKET_HOURS = RULES.marketHours || {};
+const TRAVEL_PENALTY_CAP = RULES.travelPenaltyCap ?? Infinity;
+const DEBT_HORIZON_HOURS = RULES.debtHorizonHours ?? 0;
+const MANIFEST_DISCOUNTS = RULES.manifestDiscounts || {};
+const BUY_UTILITY_MULTIPLIER = RULES.buyUtilityMultiplier ?? 1;
+const SEED_KEYS = Array.isArray(RULES.seedKeys) ? RULES.seedKeys : ['barley', 'pulses', 'oats', 'wheat'];
 
 const DEFAULT_THRESHOLDS = {
-  seeds: { barley: 12, pulses: 10, oats: 12, wheat: 12 },
-  hay_min: 2,
-  hay_target: 6,
-  grain_keep: 120,
-  grain_surplus: 160,
-  cash_min: 5,
+  seeds: { ...(RULES.seedMinimums || {}) },
+  hay_min: RULES.hayMin ?? 0,
+  hay_target: RULES.hayTarget ?? 0,
+  grain_keep: RULES.grainKeep ?? 0,
+  grain_surplus: RULES.grainSurplus ?? 0,
+  cash_min: RULES.cashMin ?? 0,
   manifest_value_min: DEFAULT_MANIFEST_VALUE_MIN,
 };
 
@@ -66,7 +77,8 @@ export function ensureMarketState(world) {
 }
 
 export function priceFor(item, month) {
-  const drift = (month >= 6 && month <= 8) ? +0.10 : 0;
+  const numericMonth = typeof month === 'number' ? month : CALENDAR?.MONTHS?.indexOf(month) + 1;
+  const drift = PRICE_DRIFT_MONTHS.has(numericMonth) ? PRICE_DRIFT_FACTOR : 0;
   return (PRICES[item] || 0) * (1 + drift);
 }
 
@@ -120,8 +132,7 @@ function addSellLines(world, sell, thresholds) {
 }
 
 function addBuyLines(world, buy, thresholds) {
-  const seeds = ['barley', 'pulses', 'oats', 'wheat'];
-  for (const key of seeds) {
+  for (const key of SEED_KEYS) {
     const have = seedStock(world, key);
     const target = thresholds.seeds?.[key] ?? 0;
     if (have < target) {
@@ -177,7 +188,7 @@ export function clampToCapacityAndBudget(world, sell, buy) {
   const month = world.calendar.month;
   const sellRevenue = sellClamped.reduce((acc, line) => acc + priceFor(line.item, month) * (line.qty ?? 0), 0);
   const buyCost = buyClamped.reduce((acc, line) => acc + priceFor(line.item, month) * (line.qty ?? 0), 0);
-  const buyUtility = buyClamped.reduce((acc, line) => acc + priceFor(line.item, month) * (line.qty ?? 0) * 1.2, 0);
+  const buyUtility = buyClamped.reduce((acc, line) => acc + priceFor(line.item, month) * (line.qty ?? 0) * BUY_UTILITY_MULTIPLIER, 0);
   const value = sellRevenue + buyUtility;
   return { sellFinal: sellClamped, buyFinal: buyClamped, value, revenue: sellRevenue, cost: buyCost };
 }
@@ -215,8 +226,13 @@ function absoluteMinutes(world) {
 
 export function estimateRoundTripMinutes(world) {
   ensureMarketState(world);
-  const yard = world.locations?.yard ?? world.farmhouse ?? { x: 0, y: 0 };
-  const market = world.locations?.market ?? { x: yard.x + 200, y: yard.y + 50 };
+  const yard = world.locations?.yard
+    ?? world.farmhouse
+    ?? PACK.estate?.farmhouse
+    ?? { x: 0, y: 0 };
+  const market = world.locations?.market
+    ?? PACK.estate?.market
+    ?? yard;
   const dx = Math.abs((yard.x ?? 0) - (market.x ?? 0));
   const dy = Math.abs((yard.y ?? 0) - (market.y ?? 0));
   const stepsOneWay = dx + dy;
@@ -231,13 +247,13 @@ function estimateTripCost(world) {
 
 export function marketOpenNow(world) {
   const minute = world.calendar.minute ?? 0;
-  const open = 9 * 60;
-  const close = 17 * 60;
+  const open = MARKET_HOURS.open ?? 0;
+  const close = MARKET_HOURS.close ?? MINUTES_PER_DAY;
   return minute >= open && minute <= close;
 }
 
 export function travelPenalty(world) {
-  return Math.min(5, estimateRoundTripMinutes(world) / 60);
+  return Math.min(TRAVEL_PENALTY_CAP, estimateRoundTripMinutes(world) / 60);
 }
 
 export function needsMarketTrip(world, request = {}) {
@@ -245,17 +261,21 @@ export function needsMarketTrip(world, request = {}) {
   const thresholds = world.thresholds;
   const store = world.store || {};
   const seeds = store.seed || {};
-  const buySeeds = ['barley', 'pulses', 'oats', 'wheat'].some(key => (seeds[key] ?? 0) < (thresholds.seeds?.[key] ?? 0));
+  const buySeeds = SEED_KEYS.some((key) => (seeds[key] ?? 0) < (thresholds.seeds?.[key] ?? 0));
   const buyFeed = (store.hay ?? 0) < (thresholds.hay_min ?? 0);
   const grainTotal = (store.wheat ?? 0) + (store.barley ?? 0) + (store.oats ?? 0) + (store.pulses ?? 0);
   const sellGrain = grainTotal > (thresholds.grain_surplus ?? Infinity);
-  const debtDue = !!(world.finance?.loanDueWithinHours?.(48)) && (world.finance?.cash ?? world.cash ?? 0) < (thresholds.cash_min ?? 0);
+  const debtDue = !!(world.finance?.loanDueWithinHours?.(DEBT_HORIZON_HOURS))
+    && (world.finance?.cash ?? world.cash ?? 0) < (thresholds.cash_min ?? 0);
   const manifest = buildMarketManifest(world, request);
   const manifestValue = manifest.value;
   const travelCost = estimateTripCost(world);
   const minValueBase = thresholds.manifest_value_min ?? DEFAULT_MANIFEST_VALUE_MIN;
-  const minValue = (buySeeds || buyFeed) ? minValueBase * 0.7 : minValueBase;
-  const urgencyFactor = (buyFeed || debtDue) ? 0.7 : (buySeeds ? 0.9 : 1.2);
+  const essentialWeight = MANIFEST_DISCOUNTS.essential ?? 1;
+  const seedWeight = MANIFEST_DISCOUNTS.seeds ?? 1;
+  const defaultWeight = MANIFEST_DISCOUNTS.default ?? 1;
+  const minValue = (buySeeds || buyFeed) ? minValueBase * (buyFeed ? essentialWeight : seedWeight) : minValueBase;
+  const urgencyFactor = buyFeed || debtDue ? essentialWeight : (buySeeds ? seedWeight : defaultWeight);
   const tradeThreshold = travelCost * urgencyFactor;
   const goodTrade = manifestValue >= Math.max(minValue, tradeThreshold);
   const lastTrip = world.market.lastTripAt ?? -Infinity;

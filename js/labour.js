@@ -1,9 +1,19 @@
 import { CALENDAR } from './time.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+
+const PACK_LABOUR = CONFIG_PACK_V1.labour;
+const PACK_CALENDAR = CONFIG_PACK_V1.calendar;
+
+const HOURS_PER_DAY = PACK_LABOUR.hoursPerDay;
+const DAYS_PER_MONTH = PACK_LABOUR.daysPerMonth ?? PACK_CALENDAR.daysPerMonth;
+const CREW_SLOTS = PACK_LABOUR.crewSlots;
+const MONTHLY_HOURS = PACK_LABOUR.monthlyHours ?? CREW_SLOTS * DAYS_PER_MONTH * HOURS_PER_DAY;
 
 export const LABOUR = Object.freeze({
-  ADULTS: 4,
-  DAYS_PER_MONTH: 20,
-  HOURS_PER_DAY: 8,
+  ADULTS: CREW_SLOTS,
+  DAYS_PER_MONTH,
+  HOURS_PER_DAY,
+  MONTHLY_HOURS,
 });
 
 const state = {
@@ -12,7 +22,7 @@ const state = {
 };
 
 export function labourBudgetForMonth() {
-  return LABOUR.ADULTS * LABOUR.DAYS_PER_MONTH * LABOUR.HOURS_PER_DAY;
+  return LABOUR.MONTHLY_HOURS;
 }
 
 export function resetLabour(month = CALENDAR.MONTHS[0]) {
