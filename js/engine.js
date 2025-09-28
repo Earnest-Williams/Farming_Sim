@@ -54,6 +54,47 @@ function ensureFarmer(state) {
   return state.farmer;
 }
 
+function ensureWorldFarmer(state) {
+  if (!state?.world) return null;
+  const world = state.world;
+  if (!world.farmer) {
+    world.farmer = { x: 0, y: 0, queue: [], activeWork: [], task: null };
+  }
+  if (!Array.isArray(world.farmer.queue)) {
+    world.farmer.queue = [];
+  }
+  if (!Array.isArray(world.farmer.activeWork)) {
+    world.farmer.activeWork = [];
+  }
+  return world.farmer;
+}
+
+function syncWorldFarmer(state) {
+  const engineFarmer = ensureFarmer(state);
+  const worldFarmer = ensureWorldFarmer(state);
+  if (!engineFarmer || !worldFarmer) return;
+
+  const pos = engineFarmer.pos || {};
+  const px = Number.isFinite(pos.x) ? pos.x : 0;
+  const py = Number.isFinite(pos.y) ? pos.y : 0;
+  worldFarmer.x = Math.round(px);
+  worldFarmer.y = Math.round(py);
+
+  const desiredSlots = state.world?.labour?.crewSlots ?? (worldFarmer.activeWork.length || 1);
+  const slots = Math.max(1, desiredSlots);
+  if (worldFarmer.activeWork.length !== slots) {
+    worldFarmer.activeWork = Array.from({ length: slots }, () => null);
+  } else {
+    worldFarmer.activeWork.fill(null);
+  }
+
+  const current = state.currentTask;
+  if (worldFarmer.activeWork.length > 0) {
+    worldFarmer.activeWork[0] = current?.definition?.id ?? null;
+  }
+  worldFarmer.task = current?.definition?.kind ?? null;
+}
+
 function ensureGuards(state) {
   if (!state.guards) {
     state.guards = {};
@@ -295,5 +336,6 @@ export function tick(state, simMin) {
       break;
     }
   }
+  syncWorldFarmer(state);
   return consumed;
 }
