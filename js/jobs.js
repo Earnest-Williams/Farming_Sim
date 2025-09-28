@@ -226,6 +226,7 @@ export const JOBS = [
     priority: 20,
     cooldownMin: MARKET_COOLDOWN,
     sellThreshold: CONFIG_PACK_V1.rules.sellTurnipThreshold ?? CART_CAPACITY,
+    sellResourceKey: 'turnips',
   },
 ];
 
