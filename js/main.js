@@ -1,4 +1,5 @@
 import { createInitialWorld, recordJobCompletion } from './world.js';
+import { renderColored, flushLine } from './render.js';
 import {
   resetTime,
   getSimTime,
@@ -17,6 +18,7 @@ import { generateMonthJobs } from './plan.js';
 import { scheduleMonth } from './scheduler.js';
 import { initSpeedControls } from './ui/speed.js';
 import { minutesToAdvance } from './timeflow.js';
+import { PARCEL_KIND } from './constants.js';
 
 const state = {
   world: null,
@@ -88,7 +90,7 @@ function initEvents() {
 
 function updateLabourState() {
   const usage = getLabourUsage();
-  state.world.labour = { ...usage };
+  state.world.labour = { ...state.world.labour, ...usage };
   return usage;
 }
 
@@ -214,29 +216,19 @@ function renderHud() {
 }
 
 function renderScreen() {
-  if (!DOM.screen) return;
-  const lines = [];
-  const { month, day, year } = state.world.calendar;
-  lines.push(`Season: Month ${month} · Day ${day} · Year ${year}`);
-  lines.push('');
-  lines.push('Fields:');
-  state.world.fields.forEach((field) => {
-    lines.push(`  ${field.key.padEnd(14)} | ${String(field.crop).padEnd(18)} | ${field.phase}`);
+  if (!DOM.screen || !state.world) return;
+  const { buf, styleBuf } = renderColored(state.world);
+  if (!Array.isArray(buf)) {
+    DOM.screen.innerHTML = '';
+    return;
+  }
+  const rows = buf.map((row = [], idx) => {
+    const chars = row.map((ch) => (ch == null ? ' ' : ch));
+    const styles = (styleBuf[idx] ?? []).slice(0, chars.length);
+    const spanHtml = flushLine(chars, styles);
+    return `<div class="screen-row">${spanHtml}</div>`;
   });
-  lines.push('');
-  lines.push('Closes:');
-  state.world.closes.forEach((close) => {
-    lines.push(`  ${close.key.padEnd(14)} | ${String(close.crop).padEnd(18)} | ${close.phase}`);
-  });
-  lines.push('');
-  lines.push('Livestock:');
-  Object.entries(state.world.livestock)
-    .filter(([key]) => key !== 'where')
-    .forEach(([kind, count]) => {
-      const location = state.world.livestock.where?.[kind] ?? 'yard';
-      lines.push(`  ${kind.padEnd(12)} : ${String(count).padStart(2)} head · at ${location}`);
-    });
-  DOM.screen.textContent = lines.join('\n');
+  DOM.screen.innerHTML = rows.join('');
 }
 
 function renderOverviewPanel() {
@@ -325,9 +317,17 @@ function renderPlannerPanel() {
 }
 
 function renderInventoryPanel() {
-  const rows = Object.entries(state.world.stores).map(([key, value]) => (
-    `<tr><th scope="row">${escapeHtml(key)}</th><td class="numeric">${escapeHtml(value)}</td></tr>`
-  )).join('');
+  const entries = Object.entries(state.world.store ?? {});
+  const rows = entries.map(([key, value]) => {
+    let display;
+    if (value && typeof value === 'object') {
+      const parts = Object.entries(value).map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(v)}`);
+      display = parts.join(', ');
+    } else {
+      display = escapeHtml(value);
+    }
+    return `<tr><th scope="row">${escapeHtml(key)}</th><td class="numeric">${display}</td></tr>`;
+  }).join('');
   return `
     <section>
       <h2>Stores</h2>
@@ -337,12 +337,23 @@ function renderInventoryPanel() {
 }
 
 function renderParcelsPanel() {
-  const fieldRows = state.world.fields.map((field) => (
-    `<tr><th scope="row">${escapeHtml(field.key)}</th><td>${escapeHtml(field.crop)}</td><td>${escapeHtml(field.phase)}</td></tr>`
-  )).join('');
-  const closeRows = state.world.closes.map((close) => (
-    `<tr><th scope="row">${escapeHtml(close.key)}</th><td>${escapeHtml(close.crop)}</td><td>${escapeHtml(close.phase)}</td></tr>`
-  )).join('');
+  const parcels = Array.isArray(state.world.parcels) ? state.world.parcels : [];
+  const fieldRows = parcels
+    .filter((parcel) => parcel.kind === PARCEL_KIND.ARABLE)
+    .map((parcel) => (
+      `<tr><th scope="row">${escapeHtml(parcel.name ?? parcel.key)}</th>` +
+      `<td>${escapeHtml(parcel.crop ?? '—')}</td>` +
+      `<td>${escapeHtml(parcel.phase ?? '—')}</td></tr>`
+    ))
+    .join('');
+  const closeRows = parcels
+    .filter((parcel) => parcel.kind === PARCEL_KIND.CLOSE)
+    .map((parcel) => (
+      `<tr><th scope="row">${escapeHtml(parcel.name ?? parcel.key)}</th>` +
+      `<td>${escapeHtml(parcel.crop ?? '—')}</td>` +
+      `<td>${escapeHtml(parcel.phase ?? '—')}</td></tr>`
+    ))
+    .join('');
   return `
     <section>
       <h2>Fields</h2>

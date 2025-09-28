@@ -1,4 +1,4 @@
-import { CALENDAR, resetTime, getSimTime } from './time.js';
+import { resetTime, getSimTime } from './time.js';
 import {
   CONFIG,
   LIVESTOCK_START,
@@ -56,24 +56,6 @@ export const LIVESTOCK = freezeDeep({
     geese: 'orchard',
     poultry: 'yard',
   },
-});
-
-export const STORES = freezeDeep({
-  wheat_bu: 180,
-  barley_bu: 250,
-  beans_bu: 120,
-  oats_bu: 60,
-  hay_t: 12,
-  roots_t: 2.5,
-  wood_cords: 4,
-});
-
-const WORLD_TEMPLATE = freezeDeep({
-  calendar: { month: CALENDAR.MONTHS[0], monthIndex: 0, day: 1, minute: 0, year: 1 },
-  fields: FIELDS,
-  closes: CLOSES,
-  livestock: LIVESTOCK,
-  stores: STORES,
 });
 
 const STORE_TEMPLATE = freezeDeep({
@@ -221,6 +203,46 @@ const PARCEL_LAYOUT = [
   }),
 ];
 
+const LEGACY_TO_ACTUAL_KEY = Object.freeze({
+  beans_peas: 'pulses',
+  A_oats: 'close_a',
+  C_roots: 'close_c',
+  homestead_garden: 'homestead',
+});
+
+const INITIAL_SUMMARY_BY_KEY = (() => {
+  const summaries = new Map();
+  const add = (entry) => {
+    const actualKey = LEGACY_TO_ACTUAL_KEY[entry.key] || entry.key;
+    summaries.set(actualKey, { ...entry });
+  };
+  FIELDS.forEach(add);
+  CLOSES.forEach(add);
+  return summaries;
+})();
+
+const LEGACY_CROP_TO_CROP = Object.freeze({
+  fallow: null,
+  bare: null,
+  idle: null,
+  clover: CROPS.CLOVER,
+  clover_hay: CROPS.CLOVER,
+  'barley+clover': CROPS.BARLEY,
+  barley: CROPS.BARLEY,
+  beans_peas: CROPS.PULSES,
+  'beans/peas/vetch': CROPS.PULSES,
+  oats: CROPS.OATS,
+  turnips: CROPS.TURNIPS,
+  winter_wheat: CROPS.WHEAT,
+  pulses: CROPS.PULSES,
+  flax: CROPS.FLAX,
+});
+
+function resolveParcelKey(key) {
+  if (key == null) return key;
+  return LEGACY_TO_ACTUAL_KEY[key] || key;
+}
+
 function clone(value) {
   if (Array.isArray(value)) return value.map(clone);
   if (value && typeof value === 'object') {
@@ -232,38 +254,87 @@ function clone(value) {
 }
 
 export function createInitialWorld() {
-  resetTime();
-  const world = clone(WORLD_TEMPLATE);
-  world.fields = world.fields.map((f) => ({ ...f }));
-  world.closes = world.closes.map((c) => ({ ...c }));
-  world.livestock = clone(WORLD_TEMPLATE.livestock);
-  world.stores = { ...WORLD_TEMPLATE.stores };
-  world.calendar = { ...WORLD_TEMPLATE.calendar, ...getSimTime() };
-  world.labour = { used: 0, budget: null };
+  const world = makeWorld();
+  world.calendar = { ...world.calendar, ...getSimTime() };
   world.completedJobs = [];
+  world.labour = { ...world.labour, used: 0, budget: null };
   return world;
 }
 
 export function cloneWorld(world) {
   const copy = clone(world);
-  copy.fields = world.fields.map((f) => ({ ...f }));
-  copy.closes = world.closes.map((c) => ({ ...c }));
-  copy.livestock = clone(world.livestock);
-  copy.stores = { ...world.stores };
-  copy.calendar = { ...world.calendar };
-  copy.labour = { ...world.labour };
-  copy.completedJobs = Array.isArray(world.completedJobs) ? [...world.completedJobs] : [];
+  if (Array.isArray(world.parcels)) {
+    copy.parcels = world.parcels.map((parcel) => ({
+      ...parcel,
+      soil: clone(parcel.soil),
+      status: clone(parcel.status),
+      rows: Array.isArray(parcel.rows) ? parcel.rows.map((row) => ({ ...row })) : [],
+      pasture: parcel.pasture ? { ...parcel.pasture } : null,
+      hayCuring: parcel.hayCuring ? { ...parcel.hayCuring } : null,
+    }));
+  } else {
+    copy.parcels = [];
+  }
+  copy.parcelByKey = { ...(world.parcelByKey ?? {}) };
+  if (world.camera) copy.camera = { ...world.camera };
+  if (world.farmer) {
+    copy.farmer = {
+      ...world.farmer,
+      queue: Array.isArray(world.farmer.queue) ? [...world.farmer.queue] : [],
+      activeWork: Array.isArray(world.farmer.activeWork) ? [...world.farmer.activeWork] : [],
+    };
+  }
+  if (world.tasks?.month) {
+    copy.tasks = {
+      month: {
+        queued: (world.tasks.month.queued ?? []).map((task) => ({ ...task })),
+        active: (world.tasks.month.active ?? []).map((task) => ({ ...task })),
+        done: (world.tasks.month.done ?? []).map((task) => ({ ...task })),
+        overdue: (world.tasks.month.overdue ?? []).map((task) => ({ ...task })),
+      },
+    };
+  }
+  if (world.livestock) copy.livestock = clone(world.livestock);
+  if (world.store) copy.store = clone(world.store);
+  if (world.storeSheaves) copy.storeSheaves = clone(world.storeSheaves);
+  if (world.labour) copy.labour = { ...world.labour };
+  if (Array.isArray(world.completedJobs)) copy.completedJobs = [...world.completedJobs];
   return copy;
 }
 
 export function findField(world, key) {
-  return world.fields.find((f) => f.key === key) || world.closes.find((c) => c.key === key) || null;
+  if (!world) return null;
+  const resolved = resolveParcelKey(key);
+  if (Number.isInteger(world?.parcelByKey?.[resolved])) {
+    const idx = world.parcelByKey[resolved];
+    return world.parcels?.[idx] ?? null;
+  }
+  if (Array.isArray(world?.parcels)) {
+    const parcel = world.parcels.find((p) => p.key === resolved);
+    if (parcel) return parcel;
+  }
+  if (Array.isArray(world?.fields)) {
+    const legacy = world.fields.find((f) => f.key === resolved || resolveParcelKey(f.key) === resolved);
+    if (legacy) return legacy;
+  }
+  if (Array.isArray(world?.closes)) {
+    const legacy = world.closes.find((c) => c.key === resolved || resolveParcelKey(c.key) === resolved);
+    if (legacy) return legacy;
+  }
+  return null;
 }
 
 export function updateFieldPhase(world, key, phase) {
   const parcel = findField(world, key);
   if (!parcel) return null;
   parcel.phase = phase;
+  if (Array.isArray(parcel.rows) && parcel.rows.length > 0) {
+    const stamp = { d: world.calendar?.day ?? 1, m: world.calendar?.month ?? 1 };
+    parcel.rows = parcel.rows.map((row) => ({
+      ...row,
+      _tilledOn: phase === 'ploughed' || phase === 'harrowed' ? stamp : row._tilledOn,
+    }));
+  }
   return parcel;
 }
 
@@ -271,12 +342,21 @@ export function updateFieldCrop(world, key, crop) {
   const parcel = findField(world, key);
   if (!parcel) return null;
   parcel.crop = crop;
+  const mapKey = typeof crop === 'string' ? crop : String(crop ?? '').toLowerCase();
+  const cropObj = LEGACY_CROP_TO_CROP[crop] ?? LEGACY_CROP_TO_CROP[mapKey] ?? null;
+  if (Array.isArray(parcel.rows)) {
+    parcel.rows = parcel.rows.map((row) => ({
+      ...row,
+      crop: cropObj ?? row.crop ?? null,
+      growth: cropObj ? 0 : row.growth ?? 0,
+    }));
+  }
   return parcel;
 }
 
 export function moveLivestock(world, kind, destination) {
   if (!world.livestock?.where) {
-    world.livestock = { ...world.livestock, where: { ...WORLD_TEMPLATE.livestock.where } };
+    world.livestock = { ...world.livestock, where: { ...LIVESTOCK.where } };
   }
   world.livestock.where = { ...world.livestock.where, [kind]: destination };
   return world.livestock.where[kind];
@@ -423,6 +503,9 @@ function createParcelFromTemplate(template, index) {
     pasture: null,
     hayCuring: null,
   };
+  const summary = INITIAL_SUMMARY_BY_KEY.get(parcel.key);
+  parcel.phase = summary?.phase ?? 'idle';
+  parcel.crop = summary?.crop ?? 'bare';
   if (template.pasture) attachPastureIfNeeded(parcel);
   return parcel;
 }
