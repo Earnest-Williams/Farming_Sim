@@ -18,7 +18,8 @@ import { generateMonthJobs } from './plan.js';
 import { scheduleMonth } from './scheduler.js';
 import { initSpeedControls } from './ui/speed.js';
 import { minutesToAdvance } from './timeflow.js';
-import { PARCEL_KIND } from './constants.js';
+import { PARCEL_KIND, CONFIG } from './constants.js';
+import { clamp } from './utils.js';
 
 const state = {
   world: null,
@@ -36,6 +37,8 @@ let rafHandle = null;
 let lastFrameTime = null;
 let simMinuteBacklog = 0;
 
+const CAMERA_STEP = 4;
+
 function escapeHtml(value) {
   if (value == null) return '';
   return String(value)
@@ -44,6 +47,45 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function updateFollowToggleLabel(enabled) {
+  if (!DOM.followToggle) return;
+  DOM.followToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  DOM.followToggle.textContent = enabled ? 'Following Farmer' : 'Free Camera';
+}
+
+function setFollowMode(enabled) {
+  const world = state.world;
+  if (world?.camera) {
+    world.camera.follow = enabled;
+    world.snapCamera = enabled;
+  }
+  updateFollowToggleLabel(enabled);
+}
+
+function isTextInput(element) {
+  if (!element) return false;
+  if (element.isContentEditable) return true;
+  const tag = element.tagName;
+  if (!tag) return false;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON';
+}
+
+function panCamera(dx, dy, multiplier = 1) {
+  const world = state.world;
+  if (!world?.camera) return;
+  const step = CAMERA_STEP * multiplier;
+  const maxX = CONFIG.WORLD.W - CONFIG.SCREEN.W;
+  const maxY = CONFIG.WORLD.H - CONFIG.SCREEN.H;
+  const nextX = clamp(world.camera.x + dx * step, 0, maxX);
+  const nextY = clamp(world.camera.y + dy * step, 0, maxY);
+  if (world.camera.follow !== false || world.snapCamera) {
+    setFollowMode(false);
+  }
+  world.snapCamera = false;
+  world.camera.x = nextX;
+  world.camera.y = nextY;
 }
 
 function selectDom() {
@@ -74,8 +116,8 @@ function initEvents() {
 
   if (DOM.followToggle) {
     DOM.followToggle.addEventListener('click', () => {
-      const pressed = DOM.followToggle.getAttribute('aria-pressed') === 'true';
-      DOM.followToggle.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+      const followEnabled = state.world?.camera?.follow !== false;
+      setFollowMode(!followEnabled);
     });
   }
 
@@ -123,6 +165,7 @@ function prepareMonth(month, { resetBudget = false } = {}) {
 function initWorld() {
   resetTime();
   state.world = createInitialWorld();
+  updateFollowToggleLabel(state.world.camera?.follow !== false);
   resetLabour(state.world.calendar.month);
   updateLabourState();
   prepareMonth(state.world.calendar.month, { resetBudget: true });
@@ -450,6 +493,43 @@ function startLoop() {
 function boot() {
   selectDom();
   initEvents();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', (ev) => {
+      const target = ev.target;
+      if (isTextInput(target)) return;
+      let dx = 0;
+      let dy = 0;
+      switch (ev.key) {
+        case 'ArrowUp':
+        case 'w':
+        case 'W':
+          dy = -1;
+          break;
+        case 'ArrowDown':
+        case 's':
+        case 'S':
+          dy = 1;
+          break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          dx = -1;
+          break;
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          dx = 1;
+          break;
+        default:
+          break;
+      }
+      if (dx !== 0 || dy !== 0) {
+        ev.preventDefault();
+        const multiplier = ev.shiftKey ? 2 : 1;
+        panCamera(dx, dy, multiplier);
+      }
+    });
+  }
   initWorld();
   renderAll();
   setActivePanel(state.activePanel);
