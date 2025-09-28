@@ -194,6 +194,7 @@ function threshSheaves(world, cropKey) {
     const storeField = SHEAF_KEY_TO_STORE_FIELD[k] || SHEAF_KEY_TO_STORE_FIELD[k?.toUpperCase?.()];
     if (!storeField || world.store[storeField] === undefined) {
       log(world, `⚠️ Cannot credit grain for unsupported crop key: ${k}`);
+      world.storeSheaves[k] = sheaves;
       continue;
     }
     world.store[storeField] += grainBu;
