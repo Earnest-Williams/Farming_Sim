@@ -24,7 +24,7 @@ A Norfolk-style farm planner tuned for an eight-month, twenty-day calendar. The 
 
 ## Getting Started
 
-Open `index.html` in any modern browser. The HUD shows current month/day, simulation time, and labour usage. Use the **Advance Day** button to consume scheduled work and roll time forward; the planner panel updates as tasks complete and field phases change.
+Open `index.html` in any modern browser. The HUD shows current month/day, simulation time, and labour usage. Time now flows continuously according to the selected speed; use the slider or presets to adjust the pace and watch the planner update as work completes throughout the season.
 
 ## Roadmap
 

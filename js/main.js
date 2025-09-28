@@ -15,6 +15,8 @@ import {
 } from './labour.js';
 import { generateMonthJobs } from './plan.js';
 import { scheduleMonth } from './scheduler.js';
+import { initSpeedControls } from './ui/speed.js';
+import { minutesToAdvance } from './timeflow.js';
 
 const state = {
   world: null,
@@ -23,9 +25,14 @@ const state = {
   scheduleQueue: [],
   scheduleUsage: { used: 0, budget: labourBudgetForMonth() },
   activePanel: 'overview',
+  lastPreparedMonth: null,
 };
 
 const DOM = {};
+
+let rafHandle = null;
+let lastFrameTime = null;
+let simMinuteBacklog = 0;
 
 function escapeHtml(value) {
   if (value == null) return '';
@@ -45,7 +52,6 @@ function selectDom() {
   DOM.followToggle = document.getElementById('follow-toggle');
   DOM.menu = document.getElementById('menu');
   DOM.panelContent = document.getElementById('panel-content');
-  DOM.advanceDay = document.getElementById('advance-day');
   DOM.hudDate = document.getElementById('hud-date');
   DOM.hudTime = document.getElementById('hud-time');
   DOM.hudLabour = document.getElementById('hud-labour');
@@ -78,10 +84,6 @@ function initEvents() {
       setActivePanel(button.dataset.panel);
     });
   }
-
-  if (DOM.advanceDay) {
-    DOM.advanceDay.addEventListener('click', advanceDay);
-  }
 }
 
 function updateLabourState() {
@@ -113,6 +115,7 @@ function prepareMonth(month, { resetBudget = false } = {}) {
   });
   state.scheduleUsage = { used, budget, plannedMonth: month };
   state.world.labour = { ...usage };
+  state.lastPreparedMonth = month;
 }
 
 function initWorld() {
@@ -121,6 +124,7 @@ function initWorld() {
   resetLabour(state.world.calendar.month);
   updateLabourState();
   prepareMonth(state.world.calendar.month, { resetBudget: true });
+  simMinuteBacklog = 0;
 }
 
 function nextQueuedEntry() {
@@ -143,35 +147,61 @@ function runJobEntry(entry) {
   updateLabourState();
   state.jobStatus.set(job.id, 'completed');
   entry.status = 'completed';
-  if (hoursWorked > 0) {
-    advanceSimMinutes(hoursWorked * 60);
-  }
   state.world.calendar = { ...getSimTime() };
   return hoursWorked;
 }
 
-function advanceDay() {
-  const startMonth = state.world.calendar.month;
+function ensureMonthPrepared() {
+  const currentMonth = state.world?.calendar?.month;
+  if (!currentMonth) return;
+  if (state.lastPreparedMonth !== currentMonth) {
+    prepareMonth(currentMonth, { resetBudget: true });
+  }
+}
+
+function processDayWork() {
+  ensureMonthPrepared();
   let worked = 0;
+  let safety = 0;
+  const safetyLimit = state.scheduleQueue.length + 8;
   while (worked < LABOUR.HOURS_PER_DAY) {
+    if (safety > safetyLimit) break;
+    safety += 1;
     const entry = nextQueuedEntry();
     if (!entry) break;
     const hoursWorked = runJobEntry(entry);
-    worked += hoursWorked;
-  }
-  const current = getSimTime();
-  const minutesToday = current.minute;
-  if (minutesToday > 0) {
-    advanceSimMinutes(MINUTES_PER_DAY - minutesToday);
-  } else {
-    advanceSimMinutes(MINUTES_PER_DAY);
+    if (hoursWorked > 0) {
+      worked += hoursWorked;
+    }
   }
   state.world.calendar = { ...getSimTime() };
   updateLabourState();
-  if (state.world.calendar.month !== startMonth) {
-    prepareMonth(state.world.calendar.month, { resetBudget: true });
+}
+
+function stepSimulation(dtMs) {
+  if (!state.world) return;
+  if (!Number.isFinite(dtMs) || dtMs <= 0) return;
+  const minutes = minutesToAdvance(dtMs);
+  if (!Number.isFinite(minutes) || minutes <= 0) return;
+  simMinuteBacklog += minutes;
+  const MIN_STEP = 1e-4;
+  while (simMinuteBacklog >= MIN_STEP) {
+    const current = getSimTime();
+    const minutesToday = current.minute ?? 0;
+    const actualRemaining = MINUTES_PER_DAY - minutesToday;
+    const remainingToday = actualRemaining > MIN_STEP ? actualRemaining : MINUTES_PER_DAY;
+    const step = Math.min(simMinuteBacklog, remainingToday);
+    if (step < MIN_STEP) {
+      break;
+    }
+    advanceSimMinutes(step);
+    simMinuteBacklog -= step;
+    const after = getSimTime();
+    state.world.calendar = { ...after };
+    if (actualRemaining <= step + MIN_STEP) {
+      processDayWork();
+    }
   }
-  renderAll();
 }
 
 function renderHud() {
@@ -342,7 +372,7 @@ function renderControlsPanel() {
   return `
     <section>
       <h2>Controls</h2>
-      <p>Use <strong>Advance Day</strong> to consume labour and progress field work according to the monthly schedule.</p>
+      <p>Time flows continuously. Use the speed slider or preset buttons to pause, slow, or accelerate the simulation.</p>
       <p>The planner lists acre-scaled tasks with their prerequisites. Market trips only appear when the farm needs to trade.</p>
     </section>
   `;
@@ -384,12 +414,36 @@ function renderAll() {
   renderPanel();
 }
 
+function startLoop() {
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+    return;
+  }
+  if (rafHandle != null) {
+    window.cancelAnimationFrame(rafHandle);
+    rafHandle = null;
+  }
+  lastFrameTime = null;
+  const frame = (now) => {
+    if (lastFrameTime == null) {
+      lastFrameTime = now;
+    }
+    const dt = now - lastFrameTime;
+    lastFrameTime = now;
+    stepSimulation(dt);
+    renderAll();
+    rafHandle = window.requestAnimationFrame(frame);
+  };
+  rafHandle = window.requestAnimationFrame(frame);
+}
+
 function boot() {
   selectDom();
   initEvents();
   initWorld();
   renderAll();
   setActivePanel(state.activePanel);
+  initSpeedControls();
+  startLoop();
 }
 
 document.addEventListener('DOMContentLoaded', boot);
