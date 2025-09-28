@@ -30,8 +30,19 @@ import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { clamp } from './utils.js';
 import { assertConfigCompleteness } from './config/guards.js';
 import { SimulationClock } from './time/SimulationClock.js';
+import { initPathfinding } from './pathfinding.js';
 
 assertConfigCompleteness();
+
+const pathfindingLib = typeof globalThis !== 'undefined' ? globalThis.PF : null;
+if (pathfindingLib) {
+  initPathfinding(pathfindingLib);
+} else if (typeof window !== 'undefined') {
+  initPathfinding(null);
+  console.warn('Pathfinding library not available; using direct movement fallback.');
+} else {
+  initPathfinding(null);
+}
 
 const MINUTES_PER_HOUR = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
 const JOB_LOOKUP = new Map(JOBS.map((job) => [job.id, job]));
