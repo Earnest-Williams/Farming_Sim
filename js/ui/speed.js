@@ -1,5 +1,14 @@
 import { setSpeed, getSpeed } from '../timeflow.js';
 
+const KEY_PRESETS = {
+  Digit1: 0.03,
+  Digit2: 0.06,
+  Digit3: 0.12,
+  Digit4: 0.5,
+  Digit5: 2.0,
+  Digit6: 10.0,
+};
+
 let slider;
 let label;
 let buttons;
@@ -54,15 +63,8 @@ export function initSpeedControls() {
       updateLabel();
       e.preventDefault();
     }
-    const presets = {
-      Digit1: 0.03,
-      Digit2: 0.06,
-      Digit3: 0.12,
-      Digit4: 0.5,
-      Digit5: 2.0,
-    };
-    if (presets[e.code] != null) {
-      const value = presets[e.code];
+    if (KEY_PRESETS[e.code] != null) {
+      const value = KEY_PRESETS[e.code];
       setSpeed(value);
       slider.value = String(value);
       slider.dataset.prev = String(value);
