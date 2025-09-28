@@ -9,6 +9,7 @@ import {
   CREW_SLOTS,
   LABOUR_BUDGET_MIN,
 } from './constants.js';
+import { DEFAULT_PACK_V1 } from './config/default-pack.js';
 import { makeRng } from './utils.js';
 
 export const SCREEN_W = CONFIG.SCREEN.W;
@@ -35,7 +36,7 @@ export const FIELDS = freezeDeep([
 ]);
 
 export const CLOSES = freezeDeep([
-  { key: 'A_oats', acres: 3, crop: 'bare', phase: 'ready_to_sow' },
+  { key: 'oats_close', acres: 3, crop: 'bare', phase: 'ready_to_sow' },
   { key: 'B_legume', acres: 3, crop: 'bare', phase: 'idle' },
   { key: 'C_roots', acres: 3, crop: 'bare', phase: 'plant_in_SpringII' },
 ]);
@@ -79,133 +80,26 @@ const STORE_SHEAVES_TEMPLATE = freezeDeep({ W: 0, B: 0, O: 0, P: 0 });
 
 const DEFAULT_SOIL = Object.freeze({ moisture: 0.55, nitrogen: 0.6 });
 
-const PARCEL_LAYOUT = [
-  Object.freeze({
-    key: 'turnips',
-    name: 'North Turnip Field',
-    acres: 8,
-    kind: PARCEL_KIND.ARABLE,
-    rotationIndex: 0,
-    status: { cropNote: 'Turnip aftermath', stubble: false, tilth: 0.4 },
-    x: 40,
-    y: 60,
-    w: 30,
-    h: 12,
-  }),
-  Object.freeze({
-    key: 'barley_clover',
-    name: 'Barley & Clover',
-    acres: 8,
-    kind: PARCEL_KIND.ARABLE,
-    rotationIndex: 1,
-    status: { cropNote: 'Ready for barley & clover', stubble: true, tilth: 0.3 },
-    x: 76,
-    y: 60,
-    w: 30,
-    h: 12,
-  }),
-  Object.freeze({
-    key: 'clover_hay',
-    name: 'Clover Hay',
-    acres: 8,
-    kind: PARCEL_KIND.ARABLE,
-    rotationIndex: 2,
-    status: { cropNote: 'Clover aftermath', stubble: false, tilth: 0.35 },
-    x: 112,
-    y: 60,
-    w: 30,
-    h: 12,
-    pasture: true,
-  }),
-  Object.freeze({
-    key: 'wheat',
-    name: 'Lower Wheat',
-    acres: 8,
-    kind: PARCEL_KIND.ARABLE,
-    rotationIndex: 3,
-    status: { cropNote: 'Winter wheat emerging', stubble: false, tilth: 0.5 },
-    x: 40,
-    y: 78,
-    w: 30,
-    h: 12,
-    initialCrop: CROPS.WHEAT,
-    initialGrowth: 0.35,
-  }),
-  Object.freeze({
-    key: 'pulses',
-    name: 'Pulse Close',
-    acres: 4,
-    kind: PARCEL_KIND.CLOSE,
-    status: { cropNote: 'Beans & peas fallow', stubble: false, tilth: 0.25 },
-    x: 76,
-    y: 26,
-    w: 26,
-    h: 12,
-  }),
-  Object.freeze({
-    key: 'flex',
-    name: 'Flex Field',
-    acres: 6,
-    kind: PARCEL_KIND.ARABLE,
-    rotationIndex: 0,
-    status: { cropNote: 'Awaiting decision', stubble: true, tilth: 0.25 },
-    x: 76,
-    y: 78,
-    w: 28,
-    h: 12,
-  }),
-  Object.freeze({
-    key: 'close_a',
-    name: 'Close A',
-    acres: 3,
-    kind: PARCEL_KIND.CLOSE,
-    status: { cropNote: 'Oat aftermath', stubble: true, tilth: 0.3 },
-    x: 20,
-    y: 26,
-    w: 24,
-    h: 11,
-  }),
-  Object.freeze({
-    key: 'close_c',
-    name: 'Close C',
-    acres: 3,
-    kind: PARCEL_KIND.CLOSE,
-    status: { cropNote: 'Roots lifted', stubble: false, tilth: 0.2 },
-    x: 48,
-    y: 26,
-    w: 24,
-    h: 11,
-  }),
-  Object.freeze({
-    key: 'orchard',
-    name: 'Orchard',
-    acres: 2,
-    kind: PARCEL_KIND.ORCHARD,
-    status: { cropNote: 'Fruit trees budding', stubble: false, tilth: 0 },
-    x: 108,
-    y: 26,
-    w: 24,
-    h: 11,
-    rows: 0,
-    pasture: true,
-  }),
-  Object.freeze({
-    key: 'homestead',
-    name: 'Homestead Garden',
-    acres: 1,
-    kind: PARCEL_KIND.GARDEN,
-    status: { cropNote: 'Kitchen beds', stubble: false, tilth: 0.4 },
-    x: 136,
-    y: 26,
-    w: 22,
-    h: 11,
-    rows: 0,
-  }),
-];
+const PACK_FARMHOUSE = DEFAULT_PACK_V1?.estate?.farmhouse;
+const DEFAULT_FARMHOUSE_CENTER = {
+  x: HOUSE.x + Math.floor(HOUSE.w / 2),
+  y: HOUSE.y + Math.floor(HOUSE.h / 2),
+};
+
+export const FARMHOUSE = Object.freeze({
+  ...(PACK_FARMHOUSE ?? DEFAULT_FARMHOUSE_CENTER),
+});
+
+const PACK_PARCELS = Array.isArray(DEFAULT_PACK_V1?.estate?.parcels)
+  ? DEFAULT_PACK_V1.estate.parcels.map((parcel) => clone(parcel))
+  : [];
+
+const PARCEL_LAYOUT = freezeDeep(PACK_PARCELS);
 
 const LEGACY_TO_ACTUAL_KEY = Object.freeze({
   beans_peas: 'pulses',
-  A_oats: 'close_a',
+  A_oats: 'oats_close',
+  close_a: 'oats_close',
   C_roots: 'close_c',
   homestead_garden: 'homestead',
 });
@@ -546,6 +440,7 @@ export function makeWorld(seed = 12345) {
     },
     parcels: [],
     parcelByKey: {},
+    farmhouse: { ...FARMHOUSE },
     store: clone(STORE_TEMPLATE),
     storeSheaves: clone(STORE_SHEAVES_TEMPLATE),
     stackReady: false,
