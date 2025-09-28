@@ -13,6 +13,7 @@ import { DEFAULT_PACK_V1 } from './config/default-pack.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { findParcelMeta } from './estate.js';
 import { makeRng } from './utils.js';
+import { createGrid } from './pathfinding.js';
 
 export const SCREEN_W = CONFIG.SCREEN.W;
 export const SCREEN_H = CONFIG.SCREEN.H;
@@ -346,31 +347,6 @@ export function stamp(world) {
   return { y: year, m: month, d: day };
 }
 
-export function createPathfindingGrid(width = CONFIG.WORLD.W, height = CONFIG.WORLD.H, parcels = []) {
-  const grid = Array.from({ length: height }, () => new Array(width).fill(1));
-  for (let x = 0; x < width; x++) {
-    grid[0][x] = 0;
-    grid[height - 1][x] = 0;
-  }
-  for (let y = 0; y < height; y++) {
-    grid[y][0] = 0;
-    grid[y][width - 1] = 0;
-  }
-  for (const parcel of parcels) {
-    if (!parcel) continue;
-    const startY = Math.max(0, parcel.y);
-    const endY = Math.min(height, parcel.y + parcel.h);
-    const startX = Math.max(0, parcel.x);
-    const endX = Math.min(width, parcel.x + parcel.w);
-    for (let y = startY; y < endY; y++) {
-      for (let x = startX; x < endX; x++) {
-        grid[y][x] = 1;
-      }
-    }
-  }
-  return grid;
-}
-
 export function kpiInit(world) {
   world.kpi = {
     oats_days_cover: Infinity,
@@ -487,6 +463,7 @@ export function makeWorld(seed = 12345) {
     parcels: [],
     parcelByKey: {},
     farmhouse: { ...FARMHOUSE },
+    fences: [],
     store: clone(STORE_TEMPLATE),
     storeSheaves: clone(STORE_SHEAVES_TEMPLATE),
     stackReady: false,
@@ -514,13 +491,18 @@ export function makeWorld(seed = 12345) {
     market: marketLocation,
   };
 
+  world.fences = [
+    { x: 14, y: 9, w: 1, h: 10 },
+    { x: 30, y: 23, w: 20, h: 1 },
+  ];
+
   world.parcels = PARCEL_LAYOUT.map((template, idx) => {
     const parcel = createParcelFromTemplate(template, idx);
     world.parcelByKey[parcel.key] = idx;
     return parcel;
   });
 
-  world.pathGrid = createPathfindingGrid(CONFIG.WORLD.W, CONFIG.WORLD.H, world.parcels);
+  world.pathGrid = createGrid(world);
   kpiInit(world);
   return world;
 }

@@ -6,6 +6,7 @@ import { consume } from './labour.js';
 import { TASK_META } from './task_meta.js';
 import { applyResourceDeltas } from './resources.js';
 import { DAYS_PER_MONTH, MAX_SCHEDULED_TASK_ATTEMPTS } from './constants.js';
+import { findPath } from './pathfinding.js';
 
 const STEP_COST_DEFAULT = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5;
 const MINUTES_PER_HOUR = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
@@ -38,6 +39,7 @@ function ensureFarmer(state) {
     state.farmer = {
       pos: { x: yard.x ?? 0, y: yard.y ?? 0 },
       path: [],
+      pathTarget: null,
     };
   } else {
     if (!state.farmer.pos) {
@@ -49,6 +51,12 @@ function ensureFarmer(state) {
     }
     if (!Array.isArray(state.farmer.path)) {
       state.farmer.path = [];
+    }
+    const target = state.farmer.pathTarget;
+    if (target && typeof target === 'object' && Number.isFinite(target.x) && Number.isFinite(target.y)) {
+      state.farmer.pathTarget = { x: Math.round(target.x), y: Math.round(target.y) };
+    } else {
+      state.farmer.pathTarget = null;
     }
   }
   return state.farmer;
@@ -213,28 +221,95 @@ function ensureAtSite(state, task, budgetSimMin) {
   const farmer = ensureFarmer(state);
   const workTiles = tilesForTask(state, task);
   if (!workTiles.length) return { arrived: true, consumedSimMin: 0 };
+
   const atSite = workTiles.some((tile) => tile.x === farmer.pos.x && tile.y === farmer.pos.y);
-  if (atSite) return { arrived: true, consumedSimMin: 0 };
+  if (atSite) {
+    farmer.path = [];
+    farmer.pathTarget = null;
+    return { arrived: true, consumedSimMin: 0 };
+  }
+
   const stepCost = Number.isFinite(state.stepCost) && state.stepCost > 0 ? state.stepCost : STEP_COST_DEFAULT;
   if (!(stepCost > 0)) {
     const target = workTiles[0];
-    farmer.pos.x = target.x;
-    farmer.pos.y = target.y;
+    if (target) {
+      farmer.pos.x = target.x;
+      farmer.pos.y = target.y;
+    }
+    farmer.path = [];
+    farmer.pathTarget = null;
     return { arrived: true, consumedSimMin: 0 };
   }
+
   const targetTile = nearestTile(farmer.pos, workTiles);
-  if (!targetTile) return { arrived: false, consumedSimMin: 0 };
-  let consumed = 0;
-  while (budgetSimMin - consumed >= stepCost) {
-    if (farmer.pos.x === targetTile.x && farmer.pos.y === targetTile.y) break;
-    if (farmer.pos.x !== targetTile.x) {
-      farmer.pos.x += farmer.pos.x < targetTile.x ? 1 : -1;
-    } else if (farmer.pos.y !== targetTile.y) {
-      farmer.pos.y += farmer.pos.y < targetTile.y ? 1 : -1;
+  if (!targetTile) {
+    farmer.path = [];
+    farmer.pathTarget = null;
+    return { arrived: false, consumedSimMin: 0 };
+  }
+
+  const directTravel = () => {
+    farmer.path = [];
+    farmer.pathTarget = null;
+    let consumed = 0;
+    while (budgetSimMin - consumed >= stepCost) {
+      if (farmer.pos.x === targetTile.x && farmer.pos.y === targetTile.y) break;
+      if (farmer.pos.x !== targetTile.x) {
+        farmer.pos.x += farmer.pos.x < targetTile.x ? 1 : -1;
+      } else if (farmer.pos.y !== targetTile.y) {
+        farmer.pos.y += farmer.pos.y < targetTile.y ? 1 : -1;
+      }
+      consumed += stepCost;
     }
+    const arrivedNow = workTiles.some((tile) => tile.x === farmer.pos.x && tile.y === farmer.pos.y);
+    return { arrived: arrivedNow, consumedSimMin: consumed };
+  };
+
+  const grid = state.world?.pathGrid;
+  if (!grid) {
+    return directTravel();
+  }
+
+  const targetChanged = !farmer.pathTarget || farmer.pathTarget.x !== targetTile.x || farmer.pathTarget.y !== targetTile.y;
+  if (targetChanged) {
+    farmer.path = [];
+    farmer.pathTarget = { x: targetTile.x, y: targetTile.y };
+  }
+
+  if (!Array.isArray(farmer.path) || farmer.path.length === 0) {
+    const rawPath = findPath(grid, farmer.pos, targetTile);
+    if (!Array.isArray(rawPath) || rawPath.length === 0) {
+      return directTravel();
+    }
+    const steps = rawPath.slice(1).map(([x, y]) => ({ x, y }));
+    if (steps.length === 0) {
+      return directTravel();
+    }
+    farmer.path = steps;
+  }
+
+  let consumed = 0;
+  while (budgetSimMin - consumed >= stepCost && farmer.path.length > 0) {
+    const nextStep = farmer.path.shift();
+    if (!nextStep) continue;
+    const nextX = Number.isFinite(nextStep.x) ? nextStep.x : Math.round(nextStep[0] ?? farmer.pos.x);
+    const nextY = Number.isFinite(nextStep.y) ? nextStep.y : Math.round(nextStep[1] ?? farmer.pos.y);
+    if (farmer.pos.x === nextX && farmer.pos.y === nextY) {
+      continue;
+    }
+    farmer.pos.x = nextX;
+    farmer.pos.y = nextY;
     consumed += stepCost;
   }
+
   const arrivedNow = workTiles.some((tile) => tile.x === farmer.pos.x && tile.y === farmer.pos.y);
+  if (arrivedNow) {
+    farmer.path = [];
+    farmer.pathTarget = null;
+  } else if (farmer.path.length === 0) {
+    farmer.pathTarget = null;
+  }
+
   return { arrived: arrivedNow, consumedSimMin: consumed };
 }
 
@@ -266,6 +341,7 @@ function completeTask(state, task) {
     farmer.pos.y = Math.round(task.target.y ?? farmer.pos.y);
   }
   farmer.path = [];
+  farmer.pathTarget = null;
   state.currentTask = null;
 }
 
@@ -277,6 +353,7 @@ export function createEngineState(world) {
     farmer: {
       pos: { x: yard.x ?? 0, y: yard.y ?? 0 },
       path: [],
+      pathTarget: null,
     },
     progress: {
       done: new Set(),
