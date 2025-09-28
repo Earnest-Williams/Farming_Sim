@@ -18,6 +18,7 @@ import { createGrid } from './pathfinding.js';
 export const SCREEN_W = CONFIG.SCREEN.W;
 export const SCREEN_H = CONFIG.SCREEN.H;
 export const HOUSE = Object.freeze({ ...CONFIG.HOUSE });
+export const BYRE = Object.freeze({ ...CONFIG_PACK_V1.estate.byre });
 export const WELL = Object.freeze({ ...CONFIG.WELL });
 
 function freezeDeep(value) {

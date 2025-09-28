@@ -1,4 +1,4 @@
-import { CONFIG } from './constants.js';
+import { CONFIG, HOUSE, BYRE } from './constants.js';
 
 let Pathfinding = null;
 
@@ -71,9 +71,14 @@ export function createGrid(world) {
     applyWalkableRect(grid, parcel, true, worldWidth, worldHeight);
   }
 
-  const houseRect = CONFIG.HOUSE ?? null;
+  const houseRect = HOUSE ?? CONFIG.HOUSE ?? null;
   if (houseRect) {
     applyWalkableRect(grid, houseRect, false, worldWidth, worldHeight);
+  }
+
+  const byreRect = BYRE ?? CONFIG.BYRE ?? null;
+  if (byreRect) {
+    applyWalkableRect(grid, byreRect, false, worldWidth, worldHeight);
   }
 
   const fences = Array.isArray(world?.fences) ? world.fences : [];

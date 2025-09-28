@@ -131,6 +131,7 @@ export const CONFIG = {
   SCREEN: { W: 100, H: 30 },
   WORLD:  { W: 210, H: 100 },
   HOUSE: { x: 15, y: 10, w: 16, h: 8 },
+  BYRE: { x: 30, y: 14, w: 8, h: 5 },
   WELL: { x: 35, y: 12 },
   FARMER_SPEED: 2,
   SPEED_LEVELS: [1000, 600, 300, 150, 75],
@@ -145,6 +146,9 @@ export const CONFIG = {
   LIVESTOCK_BUY_COST: 150,
   LIVESTOCK_SELL_VALUE: 100,
 };
+
+export const HOUSE = Object.freeze({ ...CONFIG.HOUSE });
+export const BYRE = Object.freeze({ ...CONFIG.BYRE });
 
 export const MAX_SCHEDULED_TASK_ATTEMPTS = 100;
 export const MID_MONTH_LABOUR_THRESHOLD = 0.35;
@@ -177,6 +181,7 @@ export const SID = {
   P_S1: 70, P_S2: 71, P_S3: 72, P_S4: 73, P_S5: 74,
   F_S1: 80, F_S2: 81, F_S3: 82, F_S4: 83, F_S5: 84,
   FARMER: 90, HOUSE_WALL: 91, DOOR: 92, WELL_WATER: 93, BORDER: 94, WELL_TEXT: 95, WOOD_FLOOR: 96,
+  BYRE_FLOOR: 97, BYRE_LABEL: 98, COPPICE_TREE: 99,
   HUD_TEXT: 100, W_RAIN: 101, W_STORM: 102, W_HOT: 103, W_SNOW: 104,
   BAR_LOW: 110, BAR_MID: 111, BAR_HIGH: 112, N_LOW: 113, N_MID: 114, N_HIGH: 115,
   MIXED_LABEL: 200,

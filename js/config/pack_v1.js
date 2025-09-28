@@ -73,7 +73,7 @@ export const CONFIG_PACK_V1 = Object.freeze({
   estate: {
     farmhouse: { x: 23, y: 14 },
     market: { x: 8, y: 8 },
-    byre: { x: 30, y: 14 },
+    byre: { x: 30, y: 14, w: 8, h: 5 },
     parcels: [
       {
         key: 'close_1',
@@ -201,6 +201,18 @@ export const CONFIG_PACK_V1 = Object.freeze({
         y: 36,
         w: 12,
         h: 8,
+        rows: 0,
+      },
+      {
+        key: 'coppice',
+        name: 'Coppice',
+        acres: 2,
+        kind: 'coppice',
+        status: { cropNote: 'Woodland', stubble: false, tilth: 0 },
+        x: 10,
+        y: 10,
+        w: 12,
+        h: 12,
         rows: 0,
       },
     ],
