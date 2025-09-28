@@ -90,16 +90,6 @@ button:hover {
   background: rgba(148, 163, 184, 0.2);
 }
 
-#advance-day {
-  background: rgba(163, 190, 140, 0.2);
-  border-color: rgba(163, 190, 140, 0.6);
-  color: var(--accent);
-}
-
-#advance-day:hover {
-  background: rgba(163, 190, 140, 0.35);
-}
-
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
