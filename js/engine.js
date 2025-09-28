@@ -1,12 +1,24 @@
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { shouldGoToMarket } from './tasks.js';
-import { pickNextTask } from './scheduler.js';
+import { pickNextTask, monthIndexFromLabel } from './scheduler.js';
 import { instantiateJob, applyJobCompletion, simMinutesForHours } from './jobCatalog.js';
 import { consume } from './labour.js';
 import { TASK_META } from './task_meta.js';
+import { applyResourceDeltas } from './resources.js';
+import { DAYS_PER_MONTH } from './constants.js';
 
 const STEP_COST_DEFAULT = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5;
 const MINUTES_PER_HOUR = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
+const DAY_SIM_MIN = CONFIG_PACK_V1.time.daySimMin ?? 24 * 60;
+
+function currentSimMinute(world) {
+  if (!world?.calendar) return 0;
+  const { month, day, minute } = world.calendar;
+  const monthIdx = monthIndexFromLabel(month);
+  const safeDay = Number.isFinite(day) ? day - 1 : 0;
+  const minuteOfDay = Number.isFinite(minute) ? minute : 0;
+  return monthIdx * DAYS_PER_MONTH * DAY_SIM_MIN + safeDay * DAY_SIM_MIN + minuteOfDay;
+}
 
 function ensureProgressStructures(state) {
   if (!state.progress) state.progress = {};
@@ -194,6 +206,17 @@ function performWorkSlice(task, budgetSimMin) {
 function completeTask(state, task) {
   applyJobCompletion(state.world, task.runtime);
   recordTaskHistory(state, task.definition);
+  const def = task.definition || {};
+  if (def.consumesOnComplete) {
+    applyResourceDeltas(state.world, def.consumesOnComplete);
+  }
+  if (def.produces) {
+    applyResourceDeltas(state.world, def.produces);
+  }
+  if (def.cooldownMin > 0 && state.taskCooldowns instanceof Map && def.id) {
+    const readyAt = currentSimMinute(state.world) + def.cooldownMin;
+    state.taskCooldowns.set(def.id, readyAt);
+  }
   const farmer = ensureFarmer(state);
   if (task.target) {
     farmer.pos.x = Math.round(task.target.x ?? farmer.pos.x);
@@ -222,6 +245,7 @@ export function createEngineState(world) {
     },
     stepCost: STEP_COST_DEFAULT,
     labour: { totalSimMin: 0, travelSimMin: 0, workSimMin: 0 },
+    taskCooldowns: new Map(),
   };
 }
 
@@ -247,6 +271,14 @@ export function tick(state, simMin) {
     }
     if (!travel.arrived) break;
     if (remaining <= 0) break;
+    const def = task.definition || {};
+    if (Array.isArray(def.allowedHours) && def.allowedHours.length === 2) {
+      const minuteOfDay = state.world?.calendar?.minute ?? 0;
+      const [start, end] = def.allowedHours;
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        if (minuteOfDay < start || minuteOfDay > end) break;
+      }
+    }
     const work = performWorkSlice(task, remaining);
     if (work.consumedSimMin > 0) {
       consumeLabour(state, work.consumedSimMin, 'work');
