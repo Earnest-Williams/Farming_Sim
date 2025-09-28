@@ -1,5 +1,5 @@
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
-import { findField, recordJobCompletion } from './world.js';
+import { findField, recordJobCompletion, parcelCenter } from './world.js';
 import {
   RATES,
   plough,
@@ -16,13 +16,6 @@ function hoursFor(acres, perHour) {
   if (!Number.isFinite(acres) || acres <= 0) return 0;
   if (!Number.isFinite(perHour) || perHour <= 0) return 0;
   return acres / perHour;
-}
-
-function parcelCenter(parcel) {
-  if (!parcel) return { x: 0, y: 0 };
-  const x = Math.round((parcel.x ?? 0) + (parcel.w ?? 0) / 2);
-  const y = Math.round((parcel.y ?? 0) + (parcel.h ?? 0) / 2);
-  return { x, y };
 }
 
 function gardenCenter(world) {

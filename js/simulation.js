@@ -40,6 +40,8 @@ import { generateWeatherToday, dailyWeatherEvents } from './weather.js';
 export { processFarmerHalfStep } from './tasks.js';
 import { assertNoWorkOutsideWindow } from './tests/invariants.js';
 
+const PASTURE_REGROWTH_RATE = PASTURE.REGROW_T_PER_ACRE_PER_DAY;
+
 function chooseFlex(world, option) {
   world.flexChoice = option;
   const key = 'flex';
@@ -236,7 +238,7 @@ export function pastureRegrow(world) {
     if (!p.pasture) continue;
     const canRegrow = (p.key === 'clover_hay') || (p.status.cropNote?.includes('aftermath'));
     if (!canRegrow) continue;
-    const add = (m >= 1 && m <= 4) ? (PASTURE.REGROW_T_PER_ACRE_PER_DAY * p.acres) : 0;
+    const add = (m >= 1 && m <= 4) ? (PASTURE_REGROWTH_RATE * p.acres) : 0;
     const cap = p.acres * PASTURE.MAX_BIOMASS_T_PER_ACRE;
     p.pasture.biomass_t = Math.min(cap, p.pasture.biomass_t + add);
     p.pasture.grazedToday_t = 0;
