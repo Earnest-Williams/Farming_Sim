@@ -1,3 +1,30 @@
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { WORK_MINUTES, DEMAND } from './constants.js';
+
+const { workStartMin, workEndMin } = CONFIG_PACK_V1.time;
+const MARKET_COOLDOWN = CONFIG_PACK_V1.rules.marketCooldownSimMin ?? 24 * 60;
+const CART_CAPACITY = CONFIG_PACK_V1.rules.cartCapacity ?? 60;
+const TURNIP_SALE_PRICE = 0.25;
+
+const daylightWindow = [workStartMin ?? 6 * 60, workEndMin ?? 18 * 60];
+
+const SEED_PER_ACRE = Object.freeze({
+  BARLEY: 1.5,
+  PULSES: 1.0,
+  OATS: 1.5,
+});
+
+function seedDemand(cropKey, acres) {
+  const perAcre = SEED_PER_ACRE[cropKey] ?? DEMAND.seed_bu_per_acre?.[cropKey] ?? 0;
+  return -(perAcre * acres);
+}
+
+function sowResources(cropKey, acres) {
+  const key = `seed_${cropKey.toLowerCase()}`;
+  const qty = seedDemand(cropKey, acres);
+  return qty ? [{ key, qty }] : [];
+}
+
 export const JOBS = [
   {
     id: 'plough_barley',
@@ -5,9 +32,15 @@ export const JOBS = [
     field: 'barley_clover',
     acres: 8,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: [],
     label: 'Plough barley & clover',
     value: 8,
+    requiresPresenceAt: 'barley_clover',
+    requiresTools: ['plough_team'],
+    baseWorkPerAcreMin: WORK_MINUTES.PloughPlot_perAcre,
+    priority: 90,
   },
   {
     id: 'harrow_barley',
@@ -15,20 +48,34 @@ export const JOBS = [
     field: 'barley_clover',
     acres: 8,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: ['plough_barley'],
     label: 'Harrow barley & clover',
     value: 8,
+    requiresPresenceAt: 'barley_clover',
+    requiresTools: ['plough_team'],
+    baseWorkPerAcreMin: WORK_MINUTES.HarrowPlot_perAcre,
+    priority: 85,
   },
   {
     id: 'sow_barley_clover',
     kind: 'sow',
     field: 'barley_clover',
     acres: 8,
-    crop: 'barley+clover',
+    crop: 'BARLEY',
+    companion: 'CLOVER',
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: ['harrow_barley'],
     label: 'Sow barley with clover',
     value: 9,
+    requiresPresenceAt: 'barley_clover',
+    requiresResources: sowResources('BARLEY', 8),
+    baseWorkPerAcreMin: WORK_MINUTES.DrillPlot_perAcre,
+    priority: 95,
+    consumesOnComplete: sowResources('BARLEY', 8),
   },
   {
     id: 'plough_pulses',
@@ -36,9 +83,15 @@ export const JOBS = [
     field: 'pulses',
     acres: 4,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: [],
     label: 'Plough pulses close',
     value: 4,
+    requiresPresenceAt: 'pulses',
+    requiresTools: ['plough_team'],
+    baseWorkPerAcreMin: WORK_MINUTES.PloughPlot_perAcre,
+    priority: 70,
   },
   {
     id: 'harrow_pulses',
@@ -46,20 +99,33 @@ export const JOBS = [
     field: 'pulses',
     acres: 4,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: ['plough_pulses'],
     label: 'Harrow pulses close',
     value: 4,
+    requiresPresenceAt: 'pulses',
+    requiresTools: ['plough_team'],
+    baseWorkPerAcreMin: WORK_MINUTES.HarrowPlot_perAcre,
+    priority: 65,
   },
   {
     id: 'sow_pulses',
     kind: 'sow',
     field: 'pulses',
     acres: 4,
-    crop: 'beans/peas/vetch',
+    crop: 'PULSES',
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: ['harrow_pulses'],
     label: 'Sow pulses',
     value: 5,
+    requiresPresenceAt: 'pulses',
+    requiresResources: sowResources('PULSES', 4),
+    baseWorkPerAcreMin: WORK_MINUTES.DrillPlot_perAcre,
+    priority: 75,
+    consumesOnComplete: sowResources('PULSES', 4),
   },
   {
     id: 'plough_oats_close',
@@ -67,9 +133,15 @@ export const JOBS = [
     field: 'oats_close',
     acres: 3,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: [],
     label: 'Plough oats close',
     value: 3,
+    requiresPresenceAt: 'oats_close',
+    requiresTools: ['plough_team'],
+    baseWorkPerAcreMin: WORK_MINUTES.PloughPlot_perAcre,
+    priority: 60,
   },
   {
     id: 'harrow_oats_close',
@@ -77,20 +149,33 @@ export const JOBS = [
     field: 'oats_close',
     acres: 3,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: ['plough_oats_close'],
     label: 'Harrow oats close',
     value: 3,
+    requiresPresenceAt: 'oats_close',
+    requiresTools: ['plough_team'],
+    baseWorkPerAcreMin: WORK_MINUTES.HarrowPlot_perAcre,
+    priority: 58,
   },
   {
     id: 'sow_oats_close',
     kind: 'sow',
     field: 'oats_close',
     acres: 3,
-    crop: 'oats',
+    crop: 'OATS',
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: ['harrow_oats_close'],
     label: 'Sow oats',
     value: 3,
+    requiresPresenceAt: 'oats_close',
+    requiresResources: sowResources('OATS', 3),
+    baseWorkPerAcreMin: WORK_MINUTES.DrillPlot_perAcre,
+    priority: 68,
+    consumesOnComplete: sowResources('OATS', 3),
   },
   {
     id: 'garden_sow_spring',
@@ -99,9 +184,14 @@ export const JOBS = [
     acres: 0.25,
     crops: ['onions', 'cabbages', 'carrots'],
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: [],
     label: 'Plant kitchen garden',
     value: 2,
+    requiresPresenceAt: 'homestead',
+    fixedWorkMin: (CONFIG_PACK_V1.rates.gardenHours ?? 6) * 60,
+    priority: 40,
   },
   {
     id: 'move_sheep_to_clover',
@@ -109,19 +199,33 @@ export const JOBS = [
     field: 'turnips',
     acres: 0,
     window: ['I', 'I'],
+    allowedMonths: [1],
+    allowedHours: daylightWindow,
     prereq: [],
     label: 'Move sheep to clover hay',
     value: 1,
-    to: 'clover_hay',
-    from: 'turnips',
+    requiresPresenceAt: 'turnips',
+    fixedWorkMin: 60,
+    priority: 30,
   },
   {
     id: 'market_trip',
     kind: 'market',
     window: ['I', 'VIII'],
+    allowedMonths: [1, 2, 3, 4, 5, 6, 7, 8],
+    allowedHours: [9 * 60, 17 * 60],
     prereq: [],
     label: 'Cart goods to market',
     value: 4,
     guard: 'hasTradeNeed',
+    requiresPresenceAt: 'market',
+    requiresResources: [{ key: 'turnips', qty: -CART_CAPACITY }],
+    fixedWorkMin: WORK_MINUTES.CartToMarket,
+    produces: [{ key: 'cash', qty: CART_CAPACITY * TURNIP_SALE_PRICE }],
+    consumesOnComplete: [{ key: 'turnips', qty: -CART_CAPACITY }],
+    priority: 20,
+    cooldownMin: MARKET_COOLDOWN,
+    sellThreshold: CONFIG_PACK_V1.rules.sellTurnipThreshold ?? CART_CAPACITY,
   },
 ];
+

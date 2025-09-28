@@ -1,6 +1,9 @@
 import { JOBS } from './jobs.js';
 import { estimateJobHours } from './jobCatalog.js';
 import { CALENDAR, DAYS_PER_MONTH } from './time.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { canFulfillResources, readResource } from './resources.js';
+import { travelTimeBetween } from './world.js';
 
 export function monthIndexFromLabel(label) {
   if (Number.isFinite(label)) {
@@ -43,7 +46,32 @@ export function guardAllows(state, job) {
 export function isEligible(state, job) {
   if (!job) return false;
   if (state?.progress?.done?.has(job.id)) return false;
-  return inWindow(state, job.window) && prerequisitesMet(state, job) && guardAllows(state, job);
+  if (!inWindow(state, job.window)) return false;
+  if (!prerequisitesMet(state, job)) return false;
+  if (!guardAllows(state, job)) return false;
+  if (Array.isArray(job.allowedMonths) && job.allowedMonths.length) {
+    const month = state?.world?.calendar?.month;
+    const idx = monthIndexFromLabel(month) + 1;
+    if (!job.allowedMonths.includes(idx)) return false;
+  }
+  if (Array.isArray(job.allowedHours) && job.allowedHours.length === 2) {
+    const minute = state?.world?.calendar?.minute ?? 0;
+    const [start, end] = job.allowedHours;
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      if (minute < start || minute > end) return false;
+    }
+  }
+  if (!canFulfillResources(state?.world, job.requiresResources)) return false;
+  if (typeof job.sellThreshold === 'number' && job.sellThreshold > 0) {
+    const stock = readResource(state?.world, 'turnips');
+    if (stock < job.sellThreshold) return false;
+  }
+  if (state?.taskCooldowns instanceof Map) {
+    const now = currentSimMinute(state);
+    const readyAt = state.taskCooldowns.get(job.id);
+    if (Number.isFinite(readyAt) && now < readyAt) return false;
+  }
+  return true;
 }
 
 function urgency(state, job) {
@@ -57,6 +85,29 @@ function urgency(state, job) {
   return 1000 - daysRemaining;
 }
 
+function workMinutes(job) {
+  if (Number.isFinite(job?.fixedWorkMin) && job.fixedWorkMin > 0) {
+    return job.fixedWorkMin;
+  }
+  if (Number.isFinite(job?.baseWorkPerAcreMin) && Number.isFinite(job?.acres)) {
+    return job.baseWorkPerAcreMin * job.acres;
+  }
+  const hours = estimateJobHours(job);
+  const minutesPerHour = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
+  return hours * minutesPerHour;
+}
+
+function currentSimMinute(state) {
+  const calendar = state?.world?.calendar;
+  if (!calendar) return 0;
+  const monthIdx = monthIndexFromLabel(calendar.month);
+  const day = Number.isFinite(calendar.day) ? calendar.day : 1;
+  const minute = Number.isFinite(calendar.minute) ? calendar.minute : 0;
+  return monthIdx * DAYS_PER_MONTH * (CONFIG_PACK_V1.time.daySimMin ?? 24 * 60) + (day - 1) * (CONFIG_PACK_V1.time.daySimMin ?? 24 * 60) + minute;
+}
+
+const TRAVEL_LAMBDA = 1 / (CONFIG_PACK_V1.rules.travelPenaltyCap ?? 5);
+
 function efficiency(job, hours) {
   const value = Number.isFinite(job?.value) ? job.value : (job.acres ?? 1);
   if (!Number.isFinite(hours) || hours <= 0) return value;
@@ -64,25 +115,32 @@ function efficiency(job, hours) {
 }
 
 export function pickNextTask(state) {
+  const pos = state?.farmer?.pos;
+  const world = state?.world;
   const eligible = JOBS
     .filter((job) => isEligible(state, job))
     .map((job) => {
-      const hours = estimateJobHours(job);
+      const minutes = workMinutes(job);
+      const travel = travelTimeBetween(world, pos, job.requiresPresenceAt ?? job.field ?? 'farmhouse');
       const urgencyScore = urgency(state, job);
-      const efficiencyScore = efficiency(job, hours);
-      const score = urgencyScore + efficiencyScore;
+      const priority = Number.isFinite(job.priority) ? job.priority : (job.value ?? 0);
+      const travelPenalty = travel * TRAVEL_LAMBDA;
+      const score = priority + urgencyScore - travelPenalty;
       return {
         job,
         urgency: urgencyScore,
-        efficiency: efficiencyScore,
+        priority,
+        travel,
         score,
+        minutes,
       };
     });
 
   eligible.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    if (a.travel !== b.travel) return a.travel - b.travel;
     if (b.urgency !== a.urgency) return b.urgency - a.urgency;
-    if (b.efficiency !== a.efficiency) return b.efficiency - a.efficiency;
     return compareMonths(a.job.window?.[0], b.job.window?.[0]);
   });
 
@@ -107,14 +165,27 @@ export function jobsInWindow(monthLabel) {
 }
 
 export function nextJobsByPriority(state) {
-  const eligible = JOBS.filter((job) => isEligible(state, job));
-  eligible.sort((a, b) => {
-    const u = urgency(state, b) - urgency(state, a);
-    if (u !== 0) return u;
-    const ea = efficiency(a, estimateJobHours(a));
-    const eb = efficiency(b, estimateJobHours(b));
-    if (eb !== ea) return eb - ea;
-    return a.id.localeCompare(b.id);
-  });
-  return eligible;
+  const pos = state?.farmer?.pos;
+  const world = state?.world;
+  return JOBS
+    .filter((job) => isEligible(state, job))
+    .map((job) => {
+      const minutes = workMinutes(job);
+      const travel = travelTimeBetween(world, pos, job.requiresPresenceAt ?? job.field ?? 'farmhouse');
+      const urgencyScore = urgency(state, job);
+      const priority = Number.isFinite(job.priority) ? job.priority : (job.value ?? 0);
+      const travelPenalty = travel * TRAVEL_LAMBDA;
+      const score = priority + urgencyScore - travelPenalty;
+      const eff = efficiency(job, minutes / (CONFIG_PACK_V1.time.minutesPerHour ?? 60));
+      return { job, score, urgency: urgencyScore, priority, travel, eff };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      if (a.travel !== b.travel) return a.travel - b.travel;
+      if (b.urgency !== a.urgency) return b.urgency - a.urgency;
+      if (b.eff !== a.eff) return b.eff - a.eff;
+      return a.job.id.localeCompare(b.job.id);
+    })
+    .map((entry) => entry.job);
 }

@@ -10,6 +10,8 @@ import {
   LABOUR_BUDGET_MIN,
 } from './constants.js';
 import { DEFAULT_PACK_V1 } from './config/default-pack.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { findParcelMeta } from './estate.js';
 import { makeRng } from './utils.js';
 
 export const SCREEN_W = CONFIG.SCREEN.W;
@@ -145,6 +147,47 @@ function clone(value) {
     return out;
   }
   return value;
+}
+
+export function parcelCenter(parcel) {
+  if (!parcel) return { x: 0, y: 0 };
+  const x = Math.round((parcel.x ?? 0) + (parcel.w ?? 0) / 2);
+  const y = Math.round((parcel.y ?? 0) + (parcel.h ?? 0) / 2);
+  return { x, y };
+}
+
+export function locationPoint(world, key) {
+  if (!world) return { x: 0, y: 0 };
+  if (key === 'farmhouse') {
+    const yard = world.locations?.yard ?? FARMHOUSE;
+    return { x: yard.x ?? 0, y: yard.y ?? 0 };
+  }
+  if (key === 'market') {
+    const market = world.locations?.market;
+    if (market) return { x: Math.round(market.x ?? 0), y: Math.round(market.y ?? 0) };
+  }
+  const parcelKey = resolveParcelKey(key);
+  if (parcelKey && world.parcelByKey && parcelKey in world.parcelByKey) {
+    const parcel = world.parcels?.[world.parcelByKey[parcelKey]];
+    if (parcel) return parcelCenter(parcel);
+  }
+  const meta = findParcelMeta(parcelKey || key);
+  if (meta) return { x: meta.x ?? 0, y: meta.y ?? 0 };
+  return { x: 0, y: 0 };
+}
+
+export function travelStepsBetween(world, from, toKey) {
+  if (!world) return 0;
+  const target = locationPoint(world, toKey);
+  const origin = from || locationPoint(world, 'farmhouse');
+  const dx = Math.abs((origin.x ?? 0) - (target.x ?? 0));
+  const dy = Math.abs((origin.y ?? 0) - (target.y ?? 0));
+  return dx + dy;
+}
+
+export function travelTimeBetween(world, from, toKey, stepSimMin = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5) {
+  const steps = travelStepsBetween(world, from, toKey);
+  return steps * (stepSimMin > 0 ? stepSimMin : 0.5);
 }
 
 export function createInitialWorld() {
