@@ -16,6 +16,7 @@ import {
   MONTHS_PER_YEAR,
   seasonOfMonth,
   DAYS_PER_YEAR,
+  MID_MONTH_LABOUR_THRESHOLD,
 } from './constants.js';
 import { makeWorld } from './world.js';
 import {
@@ -185,7 +186,7 @@ function midMonthReprioritise(world) {
   if (world.calendar.day !== 10) return;
   const urgent = world.tasks.month.queued.filter(t => t.latestDay <= 14).length;
   const labourUsed = world.labour.usedMin / world.labour.monthBudgetMin;
-  if (urgent > 0 && labourUsed < 0.35) {
+  if (urgent > 0 && labourUsed < MID_MONTH_LABOUR_THRESHOLD) {
     world.tasks.month.queued = world.tasks.month.queued.filter(t => {
       if (['Repair', 'Prune', 'GardenSow'].includes(t.kind)) {
         t.priority = 0;
