@@ -1,4 +1,4 @@
-import { createInitialWorld, recordJobCompletion } from './world.js';
+import { createInitialWorld } from './world.js';
 import { renderColored, flushLine } from './render.js';
 import {
   resetTime,
@@ -9,27 +9,35 @@ import {
 } from './time.js';
 import {
   resetLabour,
-  consume,
   getLabourUsage,
   LABOUR,
-  labourBudgetForMonth,
 } from './labour.js';
 import { generateMonthJobs } from './plan.js';
-import { scheduleMonth } from './scheduler.js';
+import { createEngineState, tick as runEngineTick } from './engine.js';
+import { JOBS } from './jobs.js';
+import {
+  guardAllows,
+  inWindow,
+  prerequisitesMet,
+  monthIndexFromLabel,
+} from './scheduler.js';
 import { initSpeedControls } from './ui/speed.js';
 import { minutesToAdvance } from './timeflow.js';
 import { PARCEL_KIND, CONFIG } from './constants.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { clamp } from './utils.js';
 import { assertConfigCompleteness } from './config/guards.js';
 
 assertConfigCompleteness();
 
+const MINUTES_PER_HOUR = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
+const JOB_LOOKUP = new Map(JOBS.map((job) => [job.id, job]));
+
 const state = {
   world: null,
+  engine: null,
   monthJobs: [],
   jobStatus: new Map(),
-  scheduleQueue: [],
-  scheduleUsage: { used: 0, budget: labourBudgetForMonth() },
   activePanel: 'overview',
   lastPreparedMonth: null,
 };
@@ -139,28 +147,56 @@ function updateLabourState() {
   return usage;
 }
 
+function computeJobStatus(job) {
+  if (!job) return 'planned';
+  const engine = state.engine;
+  const calendar = state.world?.calendar ?? {};
+  const currentMonth = calendar.month ?? 1;
+  const monthIdx = monthIndexFromLabel(currentMonth);
+  const startIdx = monthIndexFromLabel(job.window?.[0] ?? currentMonth);
+  const endIdx = monthIndexFromLabel(job.window?.[1] ?? currentMonth);
+  const doneSet = engine?.progress?.done instanceof Set ? engine.progress.done : new Set();
+  if (doneSet.has(job.id)) return 'completed';
+  if (monthIdx > endIdx) return 'overdue';
+  if (!engine) return 'planned';
+  if (monthIdx < startIdx) return 'planned';
+  if (!prerequisitesMet(engine, job)) return 'planned';
+  if (!guardAllows(engine, job)) return 'unscheduled';
+  if (engine.currentTask?.definition?.id === job.id) return 'working';
+  if (inWindow(engine, job.window)) return 'queued';
+  return 'planned';
+}
+
+function refreshJobStatus() {
+  const map = new Map();
+  for (const job of JOBS) {
+    map.set(job.id, computeJobStatus(job));
+  }
+  state.jobStatus = map;
+}
+
 function prepareMonth(month, { resetBudget = false } = {}) {
   if (resetBudget) {
     resetLabour(month);
     state.world.completedJobs = [];
   }
+  if (state.engine) {
+    state.engine.world = state.world;
+    const engineProgress = state.engine.progress;
+    const year = state.world?.calendar?.year ?? 1;
+    if (engineProgress) {
+      if (!(engineProgress.done instanceof Set)) engineProgress.done = new Set();
+      if (!(engineProgress.history instanceof Map)) engineProgress.history = new Map();
+      if (engineProgress.year !== year) {
+        engineProgress.done.clear();
+        engineProgress.history.clear();
+        engineProgress.year = year;
+      }
+    }
+  }
   const usage = updateLabourState();
   state.monthJobs = generateMonthJobs(state.world, month);
-  state.jobStatus = new Map();
-  state.monthJobs.forEach((job) => {
-    state.jobStatus.set(job.id, 'generated');
-  });
-  const { selected, used, budget } = scheduleMonth(state.world, month, state.monthJobs);
-  state.scheduleQueue = selected.map((job) => ({ job, status: 'queued' }));
-  const scheduledIds = new Set(selected.map((job) => job.id));
-  state.monthJobs.forEach((job) => {
-    if (scheduledIds.has(job.id)) {
-      state.jobStatus.set(job.id, 'queued');
-    } else {
-      state.jobStatus.set(job.id, 'unscheduled');
-    }
-  });
-  state.scheduleUsage = { used, budget, plannedMonth: month };
+  refreshJobStatus();
   state.world.labour = { ...usage };
   state.lastPreparedMonth = month;
 }
@@ -168,35 +204,12 @@ function prepareMonth(month, { resetBudget = false } = {}) {
 function initWorld() {
   resetTime();
   state.world = createInitialWorld();
+  state.engine = createEngineState(state.world);
   updateFollowToggleLabel(state.world.camera?.follow !== false);
   resetLabour(state.world.calendar.month);
   updateLabourState();
   prepareMonth(state.world.calendar.month, { resetBudget: true });
   simMinuteBacklog = 0;
-}
-
-function nextQueuedEntry() {
-  return state.scheduleQueue.find((entry) => entry.status === 'queued');
-}
-
-function runJobEntry(entry) {
-  const job = entry.job;
-  if (!job) return 0;
-  if (!job.canApply(state.world)) {
-    entry.status = 'skipped';
-    state.jobStatus.set(job.id, 'skipped');
-    return 0;
-  }
-  entry.status = 'working';
-  job.apply(state.world);
-  recordJobCompletion(state.world, job);
-  const hoursWorked = typeof job.hours === 'number' ? job.hours : 0;
-  consume(hoursWorked);
-  updateLabourState();
-  state.jobStatus.set(job.id, 'completed');
-  entry.status = 'completed';
-  state.world.calendar = { ...getSimTime() };
-  return hoursWorked;
 }
 
 function ensureMonthPrepared() {
@@ -209,21 +222,13 @@ function ensureMonthPrepared() {
 
 function processDayWork() {
   ensureMonthPrepared();
-  let worked = 0;
-  let safety = 0;
-  const safetyLimit = state.scheduleQueue.length + 8;
-  while (worked < LABOUR.HOURS_PER_DAY) {
-    if (safety > safetyLimit) break;
-    safety += 1;
-    const entry = nextQueuedEntry();
-    if (!entry) break;
-    const hoursWorked = runJobEntry(entry);
-    if (hoursWorked > 0) {
-      worked += hoursWorked;
-    }
-  }
-  state.world.calendar = { ...getSimTime() };
+  if (!state.engine) state.engine = createEngineState(state.world);
+  state.engine.world = state.world;
+  const dayBudgetSimMin = LABOUR.HOURS_PER_DAY * MINUTES_PER_HOUR;
+  runEngineTick(state.engine, dayBudgetSimMin);
   updateLabourState();
+  refreshJobStatus();
+  state.world.calendar = { ...getSimTime() };
 }
 
 function stepSimulation(dtMs) {
@@ -282,8 +287,9 @@ function renderOverviewPanel() {
   const { month, day, year, minute } = state.world.calendar;
   const hours = Math.floor(minute / 60);
   const mins = minute % 60;
-  const planned = state.scheduleQueue.filter((e) => e.status === 'queued').length;
-  const completed = state.scheduleQueue.filter((e) => e.status === 'completed').length;
+  const statuses = Array.from(state.jobStatus.values());
+  const planned = statuses.filter((s) => s === 'queued' || s === 'working').length;
+  const completed = statuses.filter((s) => s === 'completed').length;
   return `
     <section>
       <h2>Calendar</h2>
@@ -311,10 +317,16 @@ function plannerStatusLabel(status) {
       return 'Scheduled';
     case 'completed':
       return 'Completed';
+    case 'working':
+      return 'In progress';
     case 'skipped':
       return 'Skipped';
     case 'unscheduled':
       return 'Not scheduled';
+    case 'overdue':
+      return 'Overdue';
+    case 'planned':
+      return 'Planned';
     default:
       return 'Planned';
   }
@@ -325,14 +337,23 @@ function renderPlannerPanel() {
   const rows = state.monthJobs.map((job) => {
     const status = state.jobStatus.get(job.id) ?? 'planned';
     const prereqs = Array.isArray(job.prerequisites) && job.prerequisites.length > 0
-      ? job.prerequisites.map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join('')
+      ? job.prerequisites
+        .map((p) => {
+          const ref = JOB_LOOKUP.get(p);
+          const text = ref?.label ?? ref?.kind ?? p;
+          return `<span class="badge">${escapeHtml(text)}</span>`;
+        })
+        .join('')
       : '<span class="badge empty">None</span>';
-    const hoursLabel = job.hours ? job.hours.toFixed(1) : '—';
-    const acresLabel = job.acres ? job.acres.toFixed(1) : '—';
+    const hoursLabel = Number.isFinite(job.hours) ? job.hours.toFixed(1) : '—';
+    const acresLabel = Number.isFinite(job.acres) ? job.acres.toFixed(1) : '—';
+    const label = job.label ?? job.operation ?? job.kind;
+    const windowLabel = Array.isArray(job.window) ? escapeHtml(job.window.join('–')) : '—';
     return `
       <tr class="${escapeHtml(status)}">
         <td>${escapeHtml(job.field ?? '—')}</td>
-        <td>${escapeHtml(job.operation ?? job.kind)}</td>
+        <td>${escapeHtml(label)}</td>
+        <td>${windowLabel}</td>
         <td class="numeric">${acresLabel}</td>
         <td class="numeric">${hoursLabel}</td>
         <td>${prereqs}</td>
@@ -348,6 +369,7 @@ function renderPlannerPanel() {
           <tr>
             <th scope="col">Field</th>
             <th scope="col">Operation</th>
+            <th scope="col">Window</th>
             <th scope="col" class="numeric">Acres</th>
             <th scope="col" class="numeric">Hours</th>
             <th scope="col">Prerequisites</th>
