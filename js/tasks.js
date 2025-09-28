@@ -181,7 +181,10 @@ export function shouldGoToMarket(world) {
   const surplus = (store.barley ?? 0) > 280 || (store.pulses ?? 0) > 140;
   const parcels = Array.isArray(world?.parcels) ? world.parcels : [];
   const pendingSeed = parcels.some((f) => f.phase === 'needs_seed');
-  return Boolean(lowOats || surplus || pendingSeed);
+  const buyingSeed = world.tasks?.month?.queued?.some(
+    (t) => t.kind === 'CartToMarket' && t.payload?.request?.buy?.some((b) => b.item.startsWith('seed_')),
+  );
+  return Boolean(lowOats || surplus || (pendingSeed && !buyingSeed));
 }
 
 function nextTaskId(world) {
