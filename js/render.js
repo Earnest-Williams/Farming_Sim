@@ -1,5 +1,5 @@
 import { clamp, lerp, hash01, isToday, CAMERA_LERP } from './utils.js';
-import { SCREEN_W, SCREEN_H, HOUSE, WELL } from './world.js';
+import { SCREEN_W, SCREEN_H, HOUSE, WELL, BYRE } from './world.js';
 import { SID, SID_BY_CROP, CROP_GLYPHS, GRASS_GLYPHS, CONFIG, seasonOfMonth } from './constants.js';
 import { rowBand } from './world.js';
 
@@ -122,6 +122,17 @@ export function renderColored(world, debugState = {}) {
     label(buf, styleBuf, houseSX + 1, houseSY + 1, 'Bed', SID.HOUSE_WALL);
     label(buf, styleBuf, houseSX + 8, houseSY + 1, 'Living', SID.HOUSE_WALL);
   }
+  const byreSX = BYRE.x - camX;
+  const byreSY = BYRE.y - camY;
+  if (byreSX + BYRE.w >= 0 && byreSX <= SCREEN_W && byreSY + BYRE.h >= 0 && byreSY <= SCREEN_H) {
+    for (let y = byreSY; y < byreSY + BYRE.h; y++) {
+      for (let x = byreSX; x < byreSX + BYRE.w; x++) {
+        putStyled(buf, styleBuf, x, y, '#', SID.BYRE_FLOOR);
+      }
+    }
+    label(buf, styleBuf, byreSX + 1, byreSY + Math.floor(BYRE.h / 2), 'BYRE', SID.BYRE_LABEL);
+  }
+
   const wellSX = WELL.x - camX;
   const wellSY = WELL.y - camY;
   if (wellSX + 4 >= 0 && wellSX - 3 <= SCREEN_W) {
@@ -146,6 +157,19 @@ export function renderColored(world, debugState = {}) {
     putStyled(buf, styleBuf, pSX, pSY + p.h - 1, '+', SID.BORDER);
     putStyled(buf, styleBuf, pSX + p.w - 1, pSY + p.h - 1, '+', SID.BORDER);
     label(buf, styleBuf, pSX + 2, pSY, pLabel, SID.MIXED_LABEL);
+    if (p.kind === 'coppice') {
+      const startY = Math.max(p.y + 1, camY);
+      const endY = Math.min(p.y + p.h - 1, camY + SCREEN_H);
+      const startX = Math.max(p.x + 1, camX);
+      const endX = Math.min(p.x + p.w - 1, camX + SCREEN_W);
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          const treeGlyph = hash01(x, y, world.seed) < 0.2 ? 'T' : 't';
+          putStyled(buf, styleBuf, x - camX, y - camY, treeGlyph, SID.COPPICE_TREE);
+        }
+      }
+    }
+
     if (p.rows.length > 0) {
       for (let r = 0; r < p.rows.length; r++) {
         const row = p.rows[r];
