@@ -103,12 +103,8 @@ export function computeDaylightByIndex(index) {
 
 export function dayIndex(day = 1, month = 1) {
   const safeDay = Math.max(1, Math.min(DAYS_PER_MONTH, Math.floor(day)));
-  const numericMonth = Number.isFinite(month) ? Math.floor(month) : 1;
-  const zeroBasedMonth =
-    numericMonth >= 0 && numericMonth < MONTHS_PER_YEAR
-      ? clampMonthIndex(numericMonth)
-      : clampMonthIndex(numericMonth - 1);
-  return zeroBasedMonth * DAYS_PER_MONTH + (safeDay - 1);
+  const monthIdx = monthIndexFromValue(month);
+  return monthIdx * DAYS_PER_MONTH + (safeDay - 1);
 }
 
 export const SIM = Object.freeze({

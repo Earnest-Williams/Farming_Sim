@@ -406,7 +406,8 @@ function createParcelFromTemplate(template, index) {
   const rowCount = Math.max(0, Math.floor(rowsRequested));
   const rows = [];
   const initialCropValue = template.initialCrop || template.initialCropKey || null;
-  const cropTemplate = typeof initialCropValue === 'string' ? CROPS[initialCropValue] : initialCropValue;
+  const cropTemplate =
+    typeof initialCropValue === 'string' ? (CROPS[initialCropValue] ?? null) : initialCropValue;
   for (let i = 0; i < rowCount; i++) {
     const crop = cropTemplate || null;
     rows.push({
