@@ -3,9 +3,11 @@ import { renderColored, flushLine } from './render.js';
 import {
   resetTime,
   getSimTime,
-  advanceSimMinutes,
-  MINUTES_PER_DAY,
   formatSimTime,
+  computeDaylightByIndex,
+  dayIndex,
+  syncSimTime,
+  SIM,
 } from './time.js';
 import {
   resetLabour,
@@ -22,11 +24,12 @@ import {
   monthIndexFromLabel,
 } from './scheduler.js';
 import { initSpeedControls } from './ui/speed.js';
-import { minutesToAdvance } from './timeflow.js';
+import { bindClock } from './timeflow.js';
 import { PARCEL_KIND, CONFIG } from './constants.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { clamp } from './utils.js';
 import { assertConfigCompleteness } from './config/guards.js';
+import { SimulationClock } from './time/SimulationClock.js';
 
 assertConfigCompleteness();
 
@@ -44,9 +47,10 @@ const state = {
 
 const DOM = {};
 
-let rafHandle = null;
-let lastFrameTime = null;
-let simMinuteBacklog = 0;
+const clock = new SimulationClock({
+  speedSimMinPerRealMin: SIM.MIN_PER_REAL_MIN,
+  stepSimMin: SIM.STEP_MIN,
+});
 
 const CAMERA_STEP = 4;
 
@@ -73,6 +77,7 @@ function setFollowMode(enabled) {
     world.snapCamera = enabled;
   }
   updateFollowToggleLabel(enabled);
+  renderScreen();
 }
 
 function isTextInput(element) {
@@ -97,6 +102,7 @@ function panCamera(dx, dy, multiplier = 1) {
   world.snapCamera = false;
   world.camera.x = nextX;
   world.camera.y = nextY;
+  renderScreen();
 }
 
 function selectDom() {
@@ -203,13 +209,14 @@ function prepareMonth(month, { resetBudget = false } = {}) {
 
 function initWorld() {
   resetTime();
+  syncSimTime(clock.nowSimMin());
   state.world = createInitialWorld();
   state.engine = createEngineState(state.world);
   updateFollowToggleLabel(state.world.camera?.follow !== false);
   resetLabour(state.world.calendar.month);
   updateLabourState();
   prepareMonth(state.world.calendar.month, { resetBudget: true });
-  simMinuteBacklog = 0;
+  updateWorldDaylight();
 }
 
 function ensureMonthPrepared() {
@@ -220,41 +227,14 @@ function ensureMonthPrepared() {
   }
 }
 
-function processDayWork() {
-  ensureMonthPrepared();
-  if (!state.engine) state.engine = createEngineState(state.world);
-  state.engine.world = state.world;
-  const dayBudgetSimMin = LABOUR.HOURS_PER_DAY * MINUTES_PER_HOUR;
-  runEngineTick(state.engine, dayBudgetSimMin);
-  updateLabourState();
-  refreshJobStatus();
-  state.world.calendar = { ...getSimTime() };
-}
-
-function stepSimulation(dtMs) {
-  if (!state.world) return;
-  if (!Number.isFinite(dtMs) || dtMs <= 0) return;
-  const minutes = minutesToAdvance(dtMs);
-  if (!Number.isFinite(minutes) || minutes <= 0) return;
-  simMinuteBacklog += minutes;
-  const MIN_STEP = 1e-4;
-  while (simMinuteBacklog >= MIN_STEP) {
-    const current = getSimTime();
-    const minutesToday = current.minute ?? 0;
-    const actualRemaining = MINUTES_PER_DAY - minutesToday;
-    const remainingToday = actualRemaining > MIN_STEP ? actualRemaining : MINUTES_PER_DAY;
-    const step = Math.min(simMinuteBacklog, remainingToday);
-    if (step < MIN_STEP) {
-      break;
-    }
-    advanceSimMinutes(step);
-    simMinuteBacklog -= step;
-    const after = getSimTime();
-    state.world.calendar = { ...after };
-    if (actualRemaining <= step + MIN_STEP) {
-      processDayWork();
-    }
-  }
+function updateWorldDaylight() {
+  const calendar = state.world?.calendar;
+  if (!calendar) return;
+  const monthSource = Number.isFinite(calendar.monthIndex)
+    ? calendar.monthIndex
+    : calendar.month;
+  const idx = dayIndex(calendar.day, monthSource);
+  state.world.daylight = computeDaylightByIndex(idx);
 }
 
 function renderHud() {
@@ -285,8 +265,8 @@ function renderScreen() {
 function renderOverviewPanel() {
   const usage = getLabourUsage();
   const { month, day, year, minute } = state.world.calendar;
-  const hours = Math.floor(minute / 60);
-  const mins = minute % 60;
+  const hours = Math.floor(minute / MINUTES_PER_HOUR);
+  const mins = Math.floor(minute % MINUTES_PER_HOUR);
   const statuses = Array.from(state.jobStatus.values());
   const planned = statuses.filter((s) => s === 'queued' || s === 'working').length;
   const completed = statuses.filter((s) => s === 'completed').length;
@@ -493,26 +473,29 @@ function renderAll() {
   renderPanel();
 }
 
-function startLoop() {
-  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
-    return;
+function handleSimulationTick(deltaSimMin, nowSimMin) {
+  if (!state.world) return;
+  if (!state.engine) state.engine = createEngineState(state.world);
+  if (!Number.isFinite(deltaSimMin) || deltaSimMin <= 0) return;
+
+  const previous = state.world.calendar ? { ...state.world.calendar } : null;
+  syncSimTime(nowSimMin);
+  const calendar = getSimTime();
+  const dayChanged =
+    !previous || previous.day !== calendar.day || previous.month !== calendar.month || previous.year !== calendar.year;
+
+  state.world.calendar = { ...calendar };
+  state.engine.world = state.world;
+
+  if (dayChanged) {
+    updateWorldDaylight();
   }
-  if (rafHandle != null) {
-    window.cancelAnimationFrame(rafHandle);
-    rafHandle = null;
-  }
-  lastFrameTime = null;
-  const frame = (now) => {
-    if (lastFrameTime == null) {
-      lastFrameTime = now;
-    }
-    const dt = now - lastFrameTime;
-    lastFrameTime = now;
-    stepSimulation(dt);
-    renderAll();
-    rafHandle = window.requestAnimationFrame(frame);
-  };
-  rafHandle = window.requestAnimationFrame(frame);
+
+  ensureMonthPrepared();
+  runEngineTick(state.engine, deltaSimMin);
+  updateLabourState();
+  refreshJobStatus();
+  renderAll();
 }
 
 function boot() {
@@ -558,8 +541,12 @@ function boot() {
   initWorld();
   renderAll();
   setActivePanel(state.activePanel);
+  bindClock(clock);
+  clock.onTick(handleSimulationTick);
   initSpeedControls();
-  startLoop();
+  if (typeof window !== 'undefined') {
+    clock.start();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', boot);

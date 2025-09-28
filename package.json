@@ -1,0 +1,8 @@
+{
+  "name": "farming_sim",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node js/tests/run.js"
+  }
+}
