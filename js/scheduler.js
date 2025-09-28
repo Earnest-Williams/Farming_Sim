@@ -68,22 +68,33 @@ export function pickNextTask(state) {
     .filter((job) => isEligible(state, job))
     .map((job) => {
       const hours = estimateJobHours(job);
+      const urgencyScore = urgency(state, job);
+      const efficiencyScore = efficiency(job, hours);
+      const score = urgencyScore + efficiencyScore;
       return {
         job,
-        urgency: urgency(state, job),
-        efficiency: efficiency(job, hours),
+        urgency: urgencyScore,
+        efficiency: efficiencyScore,
+        score,
       };
     });
 
   eligible.sort((a, b) => {
-    const u = b.urgency - a.urgency;
-    if (u !== 0) return u;
-    const e = b.efficiency - a.efficiency;
-    if (e !== 0) return e;
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.urgency !== a.urgency) return b.urgency - a.urgency;
+    if (b.efficiency !== a.efficiency) return b.efficiency - a.efficiency;
     return compareMonths(a.job.window?.[0], b.job.window?.[0]);
   });
 
-  return eligible[0]?.job ?? null;
+  if (!eligible.length) return null;
+
+  const top = eligible[0];
+  if (top.job.kind === 'market') {
+    const seasonal = eligible.find((entry) => entry.job.kind !== 'market');
+    if (seasonal) return seasonal.job;
+  }
+
+  return top.job;
 }
 
 export function jobsInWindow(monthLabel) {

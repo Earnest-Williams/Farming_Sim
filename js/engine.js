@@ -47,60 +47,70 @@ function consumeLabour(state, simMin, reason) {
   return hours;
 }
 
-function startNextTask(state) {
-  const next = pickNextTask(state);
-  if (!next) {
-    state.currentTask = null;
-    return null;
-  }
-  const runtime = instantiateJob(state.world, next);
-  if (!runtime) {
-    state.progress.done.add(next.id);
-    state.progress.history.set(next.id, { year: state.world?.calendar?.year, month: state.world?.calendar?.month });
-    state.currentTask = null;
-    return startNextTask(state);
-  }
-  if (typeof runtime.canApply === 'function' && !runtime.canApply(state.world)) {
-    state.progress.done.add(next.id);
-    state.progress.history.set(next.id, { year: state.world?.calendar?.year, month: state.world?.calendar?.month });
-    state.currentTask = null;
-    return startNextTask(state);
-  }
-  const totalSimMin = simMinutesForHours(runtime.hours);
-  if (!Number.isFinite(totalSimMin) || totalSimMin <= 0) {
-    applyJobCompletion(state.world, runtime);
-    state.progress.done.add(next.id);
-    state.progress.history.set(next.id, { year: state.world?.calendar?.year, month: state.world?.calendar?.month });
-    state.currentTask = null;
-    return startNextTask(state);
-  }
-  const target = runtime.target || state.world?.locations?.yard || { x: 0, y: 0 };
-  state.currentTask = {
-    definition: next,
-    runtime,
-    totalSimMin,
-    remainingSimMin: totalSimMin,
-    target: { x: target.x ?? 0, y: target.y ?? 0 },
-  };
-  return state.currentTask;
+function recordTaskHistory(state, job) {
+  if (!job?.id) return;
+  const progress = state.progress;
+  const year = state.world?.calendar?.year;
+  const month = state.world?.calendar?.month;
+  progress.done.add(job.id);
+  progress.history.set(job.id, { year, month });
 }
 
-function ensureAtWorksite(state, task, stepCost, budgetSimMin) {
-  if (!task) return { consumedSimMin: 0 };
+function beginScheduledTask(state) {
+  while (true) {
+    const next = pickNextTask(state);
+    if (!next) {
+      state.currentTask = null;
+      return null;
+    }
+    const runtime = instantiateJob(state.world, next);
+    if (!runtime) {
+      recordTaskHistory(state, next);
+      continue;
+    }
+    if (typeof runtime.canApply === 'function' && !runtime.canApply(state.world)) {
+      recordTaskHistory(state, next);
+      continue;
+    }
+    const totalSimMin = simMinutesForHours(runtime.hours);
+    if (!Number.isFinite(totalSimMin) || totalSimMin <= 0) {
+      applyJobCompletion(state.world, runtime);
+      recordTaskHistory(state, next);
+      continue;
+    }
+    const target = runtime.target || state.world?.locations?.yard || { x: 0, y: 0 };
+    state.currentTask = {
+      definition: next,
+      runtime,
+      totalSimMin,
+      remainingSimMin: totalSimMin,
+      target: { x: target.x ?? 0, y: target.y ?? 0 },
+      startedAt: {
+        year: state.world?.calendar?.year ?? null,
+        month: state.world?.calendar?.month ?? null,
+        day: state.world?.calendar?.day ?? null,
+      },
+    };
+    return state.currentTask;
+  }
+}
+
+function moveTowardWorksite(state, task, budgetSimMin) {
+  if (!task) return 0;
   const pos = ensurePosition(state);
   const target = task.target || pos;
-  const cost = Number.isFinite(stepCost) && stepCost > 0 ? stepCost : STEP_COST_DEFAULT;
-  if (cost <= 0) {
+  const stepCost = Number.isFinite(state.stepCost) && state.stepCost > 0 ? state.stepCost : STEP_COST_DEFAULT;
+  if (stepCost <= 0) {
     pos.x = target.x ?? pos.x;
     pos.y = target.y ?? pos.y;
-    return { consumedSimMin: 0 };
+    return 0;
   }
   let dx = Math.round((target.x ?? pos.x) - (pos.x ?? 0));
   let dy = Math.round((target.y ?? pos.y) - (pos.y ?? 0));
-  if (dx === 0 && dy === 0) return { consumedSimMin: 0 };
+  if (dx === 0 && dy === 0) return 0;
   const stepsNeeded = Math.abs(dx) + Math.abs(dy);
-  const maxSteps = Math.min(stepsNeeded, Math.floor(budgetSimMin / cost));
-  if (maxSteps <= 0) return { consumedSimMin: 0 };
+  const maxSteps = Math.min(stepsNeeded, Math.floor(budgetSimMin / stepCost));
+  if (maxSteps <= 0) return 0;
   let steps = maxSteps;
   while (steps > 0 && (dx !== 0 || dy !== 0)) {
     if (dx !== 0) {
@@ -112,11 +122,10 @@ function ensureAtWorksite(state, task, stepCost, budgetSimMin) {
     }
     steps -= 1;
   }
-  const consumedSimMin = maxSteps * cost;
-  return { consumedSimMin };
+  return maxSteps * stepCost;
 }
 
-function workSlice(task, budgetSimMin) {
+function performWorkSlice(task, budgetSimMin) {
   if (!task) return { consumedSimMin: 0, done: false };
   const consumeSimMin = Math.min(task.remainingSimMin, budgetSimMin);
   task.remainingSimMin = Math.max(0, task.remainingSimMin - consumeSimMin);
@@ -126,11 +135,7 @@ function workSlice(task, budgetSimMin) {
 
 function completeTask(state, task) {
   applyJobCompletion(state.world, task.runtime);
-  state.progress.done.add(task.definition.id);
-  state.progress.history.set(task.definition.id, {
-    year: state.world?.calendar?.year,
-    month: state.world?.calendar?.month,
-  });
+  recordTaskHistory(state, task.definition);
   const pos = ensurePosition(state);
   pos.x = task.target?.x ?? pos.x;
   pos.y = task.target?.y ?? pos.y;
@@ -165,19 +170,19 @@ export function tick(state, simMin) {
   let consumed = 0;
   while (remaining > 0) {
     if (!state.currentTask) {
-      const task = startNextTask(state);
+      const task = beginScheduledTask(state);
       if (!task) break;
     }
     const task = state.currentTask;
     if (!task) break;
-    const travel = ensureAtWorksite(state, task, state.stepCost, remaining);
-    if (travel.consumedSimMin > 0) {
-      consumeLabour(state, travel.consumedSimMin, 'travel');
-      consumed += travel.consumedSimMin;
-      remaining -= travel.consumedSimMin;
+    const travelSimMin = moveTowardWorksite(state, task, remaining);
+    if (travelSimMin > 0) {
+      consumeLabour(state, travelSimMin, 'travel');
+      consumed += travelSimMin;
+      remaining -= travelSimMin;
       if (remaining <= 0) break;
     }
-    const work = workSlice(task, remaining);
+    const work = performWorkSlice(task, remaining);
     if (work.consumedSimMin > 0) {
       consumeLabour(state, work.consumedSimMin, 'work');
       consumed += work.consumedSimMin;
@@ -187,7 +192,7 @@ export function tick(state, simMin) {
       completeTask(state, task);
       continue;
     }
-    if (work.consumedSimMin <= 0 && travel.consumedSimMin <= 0) {
+    if (travelSimMin <= 0 && work.consumedSimMin <= 0) {
       break;
     }
   }
