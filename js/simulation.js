@@ -380,15 +380,47 @@ export function endOfYear(world) {
     for (let rIdx = 0; rIdx < p.rows.length; rIdx++) {
       const row = p.rows[rIdx];
       if (row.crop && row.growth >= 0.85) {
-        const c = row.crop;
+        const crop = row.crop;
         const nNorm = clamp(p.soil.nitrogen / N_MAX, 0, 1);
         const nFactor = lerp(0.4, 1.1, nNorm);
-        const moistFactor = clamp(lerp(0.6, 1.1, row.moisture), 0.5, 1.1);
-        const yieldUnits = Math.round((c.baseYield * p.acres / p.rows.length) * moistFactor * nFactor * 0.5);
-        if (c.type === 'grain') world.store[c.name.split('/')[0].toLowerCase()] += yieldUnits;
-        else if (c.type === 'root') world.store.turnips += yieldUnits;
-        else if (c.type === 'legume') world.store.hay += Math.round(yieldUnits * 0.8);
-        log(world, `Salvaged ${p.name}, Row ${rIdx + 1}: +${yieldUnits} ${c.type}.`);
+        const moistFactor = clamp(lerp(0.6, 1.1, row.moisture ?? p.soil.moisture), 0.5, 1.1);
+        const perRow = (crop.baseYield * (p.acres || 0)) / Math.max(1, p.rows.length);
+        const baseYieldUnits = Math.round(perRow * moistFactor * nFactor * 0.5);
+        if (baseYieldUnits > 0) {
+          let storeKey = null;
+          let salvageUnits = baseYieldUnits;
+          switch (crop.key) {
+            case CROPS.WHEAT.key:
+              storeKey = 'wheat';
+              break;
+            case CROPS.BARLEY.key:
+              storeKey = 'barley';
+              break;
+            case CROPS.OATS.key:
+              storeKey = 'oats';
+              break;
+            case CROPS.PULSES.key:
+              storeKey = 'pulses';
+              break;
+            case CROPS.TURNIPS.key:
+              storeKey = 'turnips';
+              break;
+            case CROPS.CLOVER.key:
+              storeKey = 'hay';
+              salvageUnits = Math.round(salvageUnits * 0.8);
+              break;
+            case CROPS.FLAX.key:
+              storeKey = 'flax';
+              break;
+            default:
+              storeKey = null;
+          }
+          if (storeKey) {
+            if (!Number.isFinite(world.store[storeKey])) world.store[storeKey] = 0;
+            world.store[storeKey] += salvageUnits;
+          }
+          log(world, `Salvaged ${p.name}, Row ${rIdx + 1}: +${salvageUnits} units of ${crop.name}.`);
+        }
       }
       row.crop = null;
       row.companion = null;
