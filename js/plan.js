@@ -11,16 +11,16 @@ import {
 
 export const MONTHLY_PLAN = {
   I: [
-    { op: 'plough+harrow', fields: ['barley_clover', 'beans_peas', 'A_oats'] },
+    { op: 'plough+harrow', fields: ['barley_clover', 'pulses', 'close_a'] },
     {
       op: 'sow',
       pairs: [
         ['barley_clover', 'barley+clover'],
-        ['beans_peas', 'beans/peas/vetch'],
-        ['A_oats', 'oats'],
+        ['pulses', 'beans/peas/vetch'],
+        ['close_a', 'oats'],
       ],
     },
-    { op: 'garden_plant', what: ['onions', 'cabbages', 'carrots'], parcel: 'homestead_garden' },
+    { op: 'garden_plant', what: ['onions', 'cabbages', 'carrots'], parcel: 'homestead' },
     { op: 'move_sheep', from: 'turnips', to: 'clover_hay' },
   ],
 };
@@ -45,7 +45,7 @@ function flattenJobs(world, planItem) {
       jobs.push(sow(field, crop));
     }
   } else if (planItem.op === 'garden_plant') {
-    jobs.push(gardenPlant(planItem.parcel ?? 'homestead_garden', planItem.what));
+    jobs.push(gardenPlant(planItem.parcel ?? 'homestead', planItem.what));
   } else if (planItem.op === 'move_sheep') {
     jobs.push(moveSheep(planItem.from, planItem.to));
   }

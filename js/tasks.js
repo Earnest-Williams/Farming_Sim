@@ -159,9 +159,10 @@ export function cartToMarket() {
 }
 
 export function shouldGoToMarket(world) {
-  const lowOats = (world?.stores?.oats_bu ?? 0) < OATS_LOW_THRESHOLD;
-  const surplus = (world?.stores?.barley_bu ?? 0) > 280 || (world?.stores?.beans_bu ?? 0) > 140;
-  const parcels = [...(world?.fields ?? []), ...(world?.closes ?? [])];
+  const store = world?.store ?? {};
+  const lowOats = (store.oats ?? 0) < OATS_LOW_THRESHOLD;
+  const surplus = (store.barley ?? 0) > 280 || (store.pulses ?? 0) > 140;
+  const parcels = Array.isArray(world?.parcels) ? world.parcels : [];
   const pendingSeed = parcels.some((f) => f.phase === 'needs_seed');
   return Boolean(lowOats || surplus || pendingSeed);
 }
