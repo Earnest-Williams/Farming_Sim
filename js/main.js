@@ -20,6 +20,9 @@ import { initSpeedControls } from './ui/speed.js';
 import { minutesToAdvance } from './timeflow.js';
 import { PARCEL_KIND, CONFIG } from './constants.js';
 import { clamp } from './utils.js';
+import { assertConfigCompleteness } from './config/guards.js';
+
+assertConfigCompleteness();
 
 const state = {
   world: null,

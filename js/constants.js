@@ -1,4 +1,7 @@
 import { DAYS_PER_MONTH as TIME_DAYS_PER_MONTH, MONTHS_PER_YEAR as TIME_MONTHS_PER_YEAR, MINUTES_PER_DAY as TIME_MINUTES_PER_DAY, DAYLIGHT } from './time.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+
+const PACK = CONFIG_PACK_V1;
 
 export const DAYS_PER_MONTH = TIME_DAYS_PER_MONTH;
 export const MONTHS_PER_YEAR = TIME_MONTHS_PER_YEAR;
@@ -6,7 +9,7 @@ export const MINUTES_PER_DAY = TIME_MINUTES_PER_DAY;
 export const DAYS_PER_YEAR = DAYS_PER_MONTH * MONTHS_PER_YEAR;
 
 export const SEASONS = ["Spring","Spring","Summer","Summer","Autumn","Autumn","Winter","Winter"];
-export const MONTH_NAMES = ["I","II","III","IV","V","VI","VII","VIII"];
+export const MONTH_NAMES = Object.freeze([...PACK.calendar.months]);
 
 export function seasonOfMonth(m) {
   return SEASONS[(m - 1) % 8];
@@ -34,9 +37,9 @@ export const PARCEL_KIND = {
 export const ACRES_PER_ROW = 0.5;
 export const ROWS_FOR_ACRES = (ac) => Math.max(1, Math.round(ac / ACRES_PER_ROW));
 
-export const CREW_SLOTS = 4;
-export const LABOUR_DAY_MIN = 8 * 60;
-export const LABOUR_BUDGET_MIN = 80 * LABOUR_DAY_MIN;
+export const CREW_SLOTS = PACK.labour.crewSlots ?? 4;
+export const LABOUR_DAY_MIN = PACK.labour.hoursPerDay * 60;
+export const LABOUR_BUDGET_MIN = (PACK.labour.monthlyHours ?? CREW_SLOTS * PACK.calendar.daysPerMonth * PACK.labour.hoursPerDay) * 60;
 
 export const TILTH_MAX = 1.0;
 export const WEED_MAX = 1.0;

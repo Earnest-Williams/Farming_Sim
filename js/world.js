@@ -362,8 +362,10 @@ function createParcelFromTemplate(template, index) {
   const rowsRequested = template.rows != null ? template.rows : ROWS_FOR_ACRES(acres);
   const rowCount = Math.max(0, Math.floor(rowsRequested));
   const rows = [];
+  const initialCropValue = template.initialCrop || template.initialCropKey || null;
+  const cropTemplate = typeof initialCropValue === 'string' ? CROPS[initialCropValue] : initialCropValue;
   for (let i = 0; i < rowCount; i++) {
-    const crop = template.initialCrop || null;
+    const crop = cropTemplate || null;
     rows.push({
       crop,
       companion: template.initialCompanion || null,
@@ -456,6 +458,16 @@ export function makeWorld(seed = 12345) {
     storeSheavesHistory: [],
     cash: 18,
     advisor: { enabled: true, mode: 'auto' },
+  };
+
+  const yardLocation = { ...FARMHOUSE };
+  const marketLocation = DEFAULT_PACK_V1?.estate?.market
+    ? { ...DEFAULT_PACK_V1.estate.market }
+    : { x: yardLocation.x + 200, y: yardLocation.y + 50 };
+
+  world.locations = {
+    yard: yardLocation,
+    market: marketLocation,
   };
 
   world.parcels = PARCEL_LAYOUT.map((template, idx) => {

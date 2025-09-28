@@ -3,18 +3,35 @@ import {
   WORK_MINUTES,
 } from './constants.js';
 import { updateFieldCrop, updateFieldPhase, moveLivestock, findField } from './world.js';
+import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+
+const PACK = CONFIG_PACK_V1;
+const RATE_MINUTES = PACK.rates || {};
+const LABOUR = PACK.labour || {};
+const ESTATE = PACK.estate || {};
+
+const minutesToAcresPerHour = (minutes) => {
+  if (!Number.isFinite(minutes) || minutes <= 0) return 0;
+  return 60 / minutes;
+};
+
+const farmhouse = ESTATE.farmhouse || { x: 0, y: 0 };
+const market = ESTATE.market || { x: 0, y: 0 };
+const travelStep = LABOUR.travelStepSimMin ?? 0;
+const stepsOneWay = Math.abs((farmhouse.x ?? 0) - (market.x ?? 0)) + Math.abs((farmhouse.y ?? 0) - (market.y ?? 0));
+const roundTripMinutes = stepsOneWay * travelStep * 2 + 2 * (RATE_MINUTES.loadUnloadMarket ?? 0);
 
 export const RATES = Object.freeze({
-  plough_ac_per_hour: 0.8,
-  harrow_ac_per_hour: 1.2,
-  drill_ac_per_hour: 1.0,
-  hoe_ac_per_hour: 2.0,
-  hay_cut_ac_per_hour: 1.0,
-  cart_market_hours: 4,
-  garden_hours: 6,
+  plough_ac_per_hour: minutesToAcresPerHour(RATE_MINUTES.ploughHarrow),
+  harrow_ac_per_hour: minutesToAcresPerHour(RATE_MINUTES.ploughHarrow),
+  drill_ac_per_hour: minutesToAcresPerHour(RATE_MINUTES.sow),
+  hoe_ac_per_hour: minutesToAcresPerHour(RATE_MINUTES.hoe),
+  hay_cut_ac_per_hour: minutesToAcresPerHour(RATE_MINUTES.hayCut),
+  cart_market_hours: Math.max(0, roundTripMinutes) / 60,
+  garden_hours: RATE_MINUTES.gardenHours ?? 0,
 });
 
-export const OATS_LOW_THRESHOLD = 20;
+export const OATS_LOW_THRESHOLD = PACK.rules?.oatsLowThreshold ?? 0;
 
 let jobCounter = 0;
 
