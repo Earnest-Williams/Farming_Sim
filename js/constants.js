@@ -146,6 +146,9 @@ export const CONFIG = {
   LIVESTOCK_SELL_VALUE: 100,
 };
 
+export const MAX_SCHEDULED_TASK_ATTEMPTS = 100;
+export const MID_MONTH_LABOUR_THRESHOLD = 0.35;
+
 export const WORK_MINUTES = {
   PlantRow: 25, HarvestRow: 45, TendRow: 10, IrrigateRow: 12, DrawWater: 15,
   PloughPlot_perAcre: 160,   HarrowPlot_perAcre: 60,   DrillPlot_perAcre: 45,

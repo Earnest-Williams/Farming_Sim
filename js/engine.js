@@ -5,7 +5,7 @@ import { instantiateJob, applyJobCompletion, simMinutesForHours } from './jobCat
 import { consume } from './labour.js';
 import { TASK_META } from './task_meta.js';
 import { applyResourceDeltas } from './resources.js';
-import { DAYS_PER_MONTH } from './constants.js';
+import { DAYS_PER_MONTH, MAX_SCHEDULED_TASK_ATTEMPTS } from './constants.js';
 
 const STEP_COST_DEFAULT = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5;
 const MINUTES_PER_HOUR = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
@@ -84,7 +84,7 @@ function recordTaskHistory(state, job) {
 }
 
 function beginScheduledTask(state) {
-  while (true) {
+  for (let attempts = 0; attempts < MAX_SCHEDULED_TASK_ATTEMPTS; attempts += 1) {
     const next = pickNextTask(state);
     if (!next) {
       state.currentTask = null;
@@ -121,6 +121,8 @@ function beginScheduledTask(state) {
     if (state.farmer) state.farmer.path = [];
     return state.currentTask;
   }
+  state.currentTask = null;
+  return null;
 }
 
 function normalizeTile(tile) {
