@@ -2,6 +2,7 @@ import { assertCloseFieldWithinSteps, assertStepMatchesTick } from './config-pac
 import {
   testMovementEtaDeterminism,
   testTaskProgressGatedByArrival,
+  testWorldFarmerStateSync,
   testMonthRolloverBoundaries,
 } from './simulation-clock.test.js';
 
@@ -10,6 +11,7 @@ const tests = [
   ['config travel step matches tick', assertStepMatchesTick],
   ['movement eta determinism', testMovementEtaDeterminism],
   ['task gating by location', testTaskProgressGatedByArrival],
+  ['world farmer mirrors engine state', testWorldFarmerStateSync],
   ['month rollover boundaries', testMonthRolloverBoundaries],
 ];
 

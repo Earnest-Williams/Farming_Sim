@@ -85,6 +85,33 @@ export function testTaskProgressGatedByArrival() {
   assert.strictEqual(engine.labour.workSimMin, SIM.STEP_MIN);
 }
 
+export function testWorldFarmerStateSync() {
+  const { world, engine } = setupEngine();
+  const start = { x: engine.farmer.pos.x, y: engine.farmer.pos.y };
+  const target = { x: start.x + 2, y: start.y + 1 };
+
+  engine.currentTask = {
+    definition: { id: 'sync_task', kind: 'SyncWork' },
+    runtime: { target, hours: 0.5, kind: 'SyncWork' },
+    totalSimMin: SIM.STEP_MIN * 4,
+    remainingSimMin: SIM.STEP_MIN * 4,
+    target,
+    startedAt: { year: world.calendar.year, month: world.calendar.month, day: world.calendar.day },
+  };
+
+  runEngineTick(engine, SIM.STEP_MIN);
+  assert.strictEqual(world.farmer.x, engine.farmer.pos.x);
+  assert.strictEqual(world.farmer.y, engine.farmer.pos.y);
+  assert.strictEqual(world.farmer.task, 'SyncWork');
+  assert.ok(Array.isArray(world.farmer.activeWork));
+  assert.strictEqual(world.farmer.activeWork[0], 'sync_task');
+
+  engine.currentTask = null;
+  runEngineTick(engine, SIM.STEP_MIN);
+  assert.strictEqual(world.farmer.task, null);
+  assert.ok(world.farmer.activeWork.every((slot) => slot == null));
+}
+
 export function testMonthRolloverBoundaries() {
   resetTime();
   advanceSimMinutes(MINUTES_PER_DAY * DAYS_PER_MONTH - SIM.STEP_MIN);
