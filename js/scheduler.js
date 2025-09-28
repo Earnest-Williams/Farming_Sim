@@ -62,8 +62,9 @@ export function isEligible(state, job) {
     }
   }
   if (!canFulfillResources(state?.world, job.requiresResources)) return false;
-  if (typeof job.sellThreshold === 'number' && job.sellThreshold > 0) {
-    const stock = readResource(state?.world, 'turnips');
+  if (Number.isFinite(job.sellThreshold) && job.sellThreshold > 0) {
+    const resourceKey = job.sellResourceKey ?? 'turnips';
+    const stock = readResource(state?.world, resourceKey);
     if (stock < job.sellThreshold) return false;
   }
   if (state?.taskCooldowns instanceof Map) {
