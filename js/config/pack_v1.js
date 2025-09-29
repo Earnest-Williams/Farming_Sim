@@ -73,7 +73,7 @@ export const CONFIG_PACK_V1 = Object.freeze({
   estate: {
     farmhouse: { x: 35, y: 25, w: 8, h: 5 },
     market: { x: 8, y: 8 },
-    byre: { x: 45, y: 25, w: 8, h: 5 },
+    byre: { x: 45, y: 5, w: 8, h: 5 },
     parcels: [
       // Coppice (80x20) on the north side of the farm
       {
