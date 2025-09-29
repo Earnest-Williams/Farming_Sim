@@ -84,8 +84,8 @@ export const CONFIG_PACK_V1 = Object.freeze({
         status: { cropNote: 'Woodland', stubble: false, tilth: 0 },
         x: 10,
         y: 5,
-        w: 80,
-        h: 20,
+        w: 160,
+        h: 10,
         rows: 0,
       },
       // Homestead parcels
