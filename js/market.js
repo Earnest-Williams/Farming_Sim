@@ -111,16 +111,21 @@ function normaliseRequest(request) {
   return { buy, sell };
 }
 
-function evaluateMarketNeeds(world, thresholds) {
+function evaluateMarketNeeds(world, thresholds, request = {}) {
   const store = world.store || {};
   const seeds = store.seed || {};
   const buySeeds = SEED_KEYS.some((key) => (seeds[key] ?? 0) < (thresholds.seeds?.[key] ?? 0));
   const buyFeed = (store.hay ?? 0) < (thresholds.hay_min ?? 0);
   const grainTotal = (store.wheat ?? 0) + (store.barley ?? 0) + (store.oats ?? 0) + (store.pulses ?? 0);
   const sellGrain = grainTotal > (thresholds.grain_surplus ?? Infinity);
+  const hayTarget = thresholds.hay_target ?? Infinity;
+  const sellHay = hayTarget < Infinity && (store.hay ?? 0) > hayTarget;
   const debtDue = !!(world.finance?.loanDueWithinHours?.(DEBT_HORIZON_HOURS))
     && (world.finance?.cash ?? world.cash ?? 0) < (thresholds.cash_min ?? 0);
-  return { buySeeds, buyFeed, sellGrain, debtDue };
+  const requestBuy = Array.isArray(request.buy) ? request.buy : [];
+  const requestSell = Array.isArray(request.sell) ? request.sell : [];
+  const requestLines = requestBuy.length + requestSell.length > 0;
+  return { buySeeds, buyFeed, sellGrain, sellHay, debtDue, requestLines };
 }
 
 function requestReason(request) {
@@ -189,6 +194,7 @@ function deriveManifestReason(request, flags, ops) {
   if (flags.buySeeds) return 'seed shortage';
   if (flags.debtDue) return 'raise cash for debt';
   if (flags.sellGrain) return 'reduce grain surplus';
+  if (flags.sellHay) return 'reduce hay surplus';
   if (ops.some((op) => op.kind === 'buy')) return 'market purchases';
   if (ops.some((op) => op.kind === 'sell')) return 'market sales';
   return null;
@@ -296,8 +302,9 @@ export function estimateManifestValue(world, request = {}) {
 export function computeMarketManifest(world, request = {}) {
   ensureMarketState(world);
   const thresholds = world.thresholds;
-  const needs = evaluateMarketNeeds(world, thresholds);
-  const manifest = buildMarketManifest(world, request);
+  const requestLines = normaliseRequest(request);
+  const needs = evaluateMarketNeeds(world, thresholds, requestLines);
+  const manifest = buildMarketManifest(world, requestLines);
   const ops = manifestLinesToOperations(world, manifest);
   const reason = deriveManifestReason(request, needs, ops);
   const simulation = simulateManifest(world.store, world.cash, ops);
@@ -369,7 +376,14 @@ export function needsMarketTrip(world, request = {}) {
   ensureMarketState(world);
   const plan = computeMarketManifest(world, request);
   const thresholds = world.thresholds;
-  const { buySeeds, buyFeed, sellGrain, debtDue } = plan.needs;
+  const {
+    buySeeds,
+    buyFeed,
+    sellGrain,
+    sellHay,
+    debtDue,
+    requestLines,
+  } = plan.needs;
   const manifestValue = plan.value;
   const travelCost = estimateTripCost(world);
   const minValueBase = thresholds.manifest_value_min ?? DEFAULT_MANIFEST_VALUE_MIN;
@@ -384,13 +398,16 @@ export function needsMarketTrip(world, request = {}) {
   const cooldownOk = (absoluteMinutes(world) - lastTrip) >= (world.market.cooldownMin ?? DEFAULT_COOLDOWN_MIN);
   const hasManifest = (plan.sell.length + plan.buy.length) > 0;
   const manifestViable = !!plan.simulation?.ok;
-  const ok = hasManifest && manifestViable && (buySeeds || buyFeed || sellGrain || debtDue) && goodTrade && cooldownOk;
+  const hasTrigger = buySeeds || buyFeed || sellGrain || sellHay || debtDue || requestLines;
+  const ok = hasManifest && manifestViable && hasTrigger && goodTrade && cooldownOk;
   return {
     ok,
     buySeeds,
     buyFeed,
     sellGrain,
+    sellHay,
     debtDue,
+    requestLines,
     manifest: { sell: plan.sell, buy: plan.buy },
     manifestOps: plan.manifest,
     manifestValue,
