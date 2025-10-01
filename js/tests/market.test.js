@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { needsMarketTrip } from '../market.js';
+import { needsMarketTrip, computeMarketManifest } from '../market.js';
 import { canScheduleMarketTrip } from '../jobs/market_trip.js';
 import { MINUTES_PER_DAY } from '../time.js';
 import { DAYS_PER_MONTH } from '../constants.js';
@@ -54,6 +54,7 @@ function makeWorldForLowValueManifest() {
       lastTripAt: -Infinity,
       cooldownMin: 0,
     },
+    thresholds: { manifest_value_min: 50 },
     cash: 100,
   };
 }
@@ -72,4 +73,30 @@ test('canScheduleMarketTrip mirrors needsMarketTrip rejection for low-value mani
     needs.manifest.buy.map((line) => ({ item: line.item, qty: line.qty })),
     'scheduler summary should mirror the rejected manifest lines',
   );
+});
+
+test('computeMarketManifest buys pulse seed when inventory is low', () => {
+  const world = {
+    calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
+    store: {
+      hay: 6,
+      wheat: 120,
+      barley: 120,
+      oats: 120,
+      pulses: 120,
+      seed: { wheat: 12, barley: 12, oats: 12, pulses: 0 },
+    },
+    finance: { loanDueWithinHours: () => false, cash: 100 },
+    market: {
+      lastTripAt: -Infinity,
+      cooldownMin: 0,
+    },
+    cash: 100,
+  };
+
+  const manifest = computeMarketManifest(world);
+  const pulseSeedLine = manifest.buy.find((line) => line.item === 'seed_pulses_bu');
+
+  assert.ok(pulseSeedLine, 'Expected manifest to include a pulse seed purchase line');
+  assert.ok(pulseSeedLine.qty > 0, 'Expected positive quantity for pulse seed purchase');
 });

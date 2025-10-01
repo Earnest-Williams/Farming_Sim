@@ -103,7 +103,8 @@ export const PRICES = {
   cider_l: 0.002,
   seed_wheat_bu: 0.9,
   seed_barley_bu: 0.7,
-  seed_oats_bu: 0.5
+  seed_oats_bu: 0.5,
+  seed_pulses_bu: 0.8,
 };
 
 export const DEMAND = {
