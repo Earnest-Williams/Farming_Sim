@@ -1,5 +1,5 @@
 import { CONFIG_PACK_V1 } from '../config/pack_v1.js';
-import { computeMarketManifest } from '../market.js';
+import { computeMarketManifest, needsMarketTrip } from '../market.js';
 import { simulateManifest } from '../sim/market_exec.js';
 
 function cloneLines(lines) {
@@ -24,8 +24,8 @@ function rememberManifest(world, request, gate) {
     market.nextManifestReason = gate.reason ?? null;
     market.nextManifestRequest = request;
   } else {
-    market.nextManifestOps = null;
-    market.nextManifestSummary = null;
+    market.nextManifestOps = gate.manifest ?? null;
+    market.nextManifestSummary = gate.summary ?? null;
     market.nextManifestReason = gate.reason ?? null;
     market.nextManifestRequest = request;
   }
@@ -34,6 +34,30 @@ function rememberManifest(world, request, gate) {
 export function canScheduleMarketTrip(world, request = {}) {
   if (!world) {
     return { ok: false, reason: 'no world state', manifest: [], summary: { sell: [], buy: [] } };
+  }
+  const needs = needsMarketTrip(world, request);
+  const needSummary = {
+    sell: cloneLines(needs?.manifest?.sell),
+    buy: cloneLines(needs?.manifest?.buy),
+  };
+  if (!needs?.ok) {
+    let reason = 'market trip not needed';
+    if (needs && needs.goodTrade === false) {
+      reason = 'manifest value below trip threshold';
+    } else if (needs && needs.cooldownOk === false) {
+      reason = 'market trip on cooldown';
+    } else if (needs?.reason) {
+      reason = needs.reason;
+    }
+    const gate = {
+      ok: false,
+      reason,
+      manifest: [],
+      summary: needSummary,
+      needs,
+    };
+    rememberManifest(world, request, gate);
+    return gate;
   }
   const plan = computeMarketManifest(world, request);
   const manifest = Array.isArray(plan.manifest) ? plan.manifest.filter(Boolean) : [];
