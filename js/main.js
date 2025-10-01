@@ -211,10 +211,11 @@ function prepareMonth(month, { resetBudget = false } = {}) {
       }
     }
   }
+  const previousLabour = state.world?.labour ?? {};
   const usage = updateLabourState();
   state.monthJobs = generateMonthJobs(state.world, month);
   refreshJobStatus();
-  state.world.labour = { ...usage };
+  state.world.labour = { ...previousLabour, ...usage };
   state.lastPreparedMonth = month;
 }
 
