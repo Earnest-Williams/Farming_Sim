@@ -33,4 +33,6 @@ test('needsMarketTrip respects cooldown across roman numeral months', () => {
     (result.manifest.buy.length + result.manifest.sell.length) > 0,
     'Expected manifest to include at least one line',
   );
+  assert.ok(Array.isArray(result.manifestOps) && result.manifestOps.length > 0, 'Expected manifestOps to contain operations');
+  assert.equal(result.simulation?.ok, true);
 });
