@@ -2,7 +2,16 @@ import { strict as assert } from 'node:assert';
 import { createInitialWorld } from '../world.js';
 import { createEngineState, tick as runEngineTick } from '../engine.js';
 import { JOBS } from '../jobs.js';
-import { resetTime, advanceSimMinutes, getSimTime, SIM, MINUTES_PER_DAY, DAYS_PER_MONTH } from '../time.js';
+import {
+  resetTime,
+  advanceSimMinutes,
+  getSimTime,
+  setSimTime,
+  SIM,
+  MINUTES_PER_DAY,
+  DAYS_PER_MONTH,
+  CALENDAR,
+} from '../time.js';
 
 function setupEngine() {
   resetTime();
@@ -126,4 +135,12 @@ export function testMonthRolloverBoundaries() {
   assert.strictEqual(calendar.day, 1);
   assert.strictEqual(calendar.minute, 0);
   assert.strictEqual(calendar.year, 1);
+}
+
+export function testOneBasedMonthIndex() {
+  resetTime();
+  setSimTime({ monthIndex: 1 });
+  const calendar = getSimTime();
+  assert.strictEqual(calendar.monthIndex, 0);
+  assert.strictEqual(calendar.month, CALENDAR.MONTHS[0]);
 }

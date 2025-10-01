@@ -4,6 +4,7 @@ import {
   testTaskProgressGatedByArrival,
   testWorldFarmerStateSync,
   testMonthRolloverBoundaries,
+  testOneBasedMonthIndex,
 } from './simulation-clock.test.js';
 
 const tests = [
@@ -13,6 +14,7 @@ const tests = [
   ['task gating by location', testTaskProgressGatedByArrival],
   ['world farmer mirrors engine state', testWorldFarmerStateSync],
   ['month rollover boundaries', testMonthRolloverBoundaries],
+  ['one-based month index preserves first month', testOneBasedMonthIndex],
 ];
 
 let failed = false;

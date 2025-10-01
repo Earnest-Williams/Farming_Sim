@@ -135,8 +135,8 @@ export function resetTime() {
 function monthIndexFromValue(value) {
   if (Number.isFinite(value)) {
     const idx = Math.floor(value);
-    if (idx >= 0 && idx < MONTHS_PER_YEAR) return idx;
     if (idx >= 1 && idx <= MONTHS_PER_YEAR) return clampMonthIndex(idx - 1);
+    if (idx >= 0 && idx < MONTHS_PER_YEAR) return idx;
   }
   if (typeof value === 'string') {
     const idx = CALENDAR.MONTHS.indexOf(value);
