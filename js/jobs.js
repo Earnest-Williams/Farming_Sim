@@ -219,14 +219,9 @@ export const JOBS = [
     value: 4,
     guard: 'hasTradeNeed',
     requiresPresenceAt: 'market',
-    requiresResources: [{ key: 'turnips', qty: -CART_CAPACITY }],
     fixedWorkMin: WORK_MINUTES.CartToMarket,
-    produces: [{ key: 'cash', qty: CART_CAPACITY * TURNIP_SALE_PRICE }],
-    consumesOnComplete: [{ key: 'turnips', qty: -CART_CAPACITY }],
     priority: 20,
     cooldownMin: MARKET_COOLDOWN,
-    sellThreshold: CONFIG_PACK_V1.rules.sellTurnipThreshold ?? CART_CAPACITY,
-    sellResourceKey: 'turnips',
   },
 ];
 

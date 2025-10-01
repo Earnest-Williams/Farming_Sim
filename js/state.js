@@ -6,7 +6,8 @@ import {
   CROPS,
   TASK_KINDS } from './constants.js';
 import { attachPastureIfNeeded, stamp } from './world.js';
-import { priceFor, transactAtMarket, buildMarketManifest, ensureMarketState } from './market.js';
+import { transactAtMarket, ensureMarketState, computeMarketManifest } from './market.js';
+import { operationsToSummary } from './sim/market_exec.js';
 export { priceFor } from './market.js';
 
 export function applySowPenalty(world, p) {
@@ -251,12 +252,34 @@ function harvestOrchard(world) {
 function cartToMarket(world, payload) {
   ensureMarketState(world);
   const request = payload?.request ?? payload ?? {};
-  const manifest = payload?.manifest ?? buildMarketManifest(world, request);
-  if (!manifest.sell.length && !manifest.buy.length) {
+  let manifest = payload?.manifest ?? null;
+  let summary = null;
+
+  if (!manifest) {
+    const plan = computeMarketManifest(world, request);
+    manifest = plan.manifest;
+    summary = { sell: plan.sell, buy: plan.buy };
+  } else if (Array.isArray(manifest)) {
+    summary = operationsToSummary(manifest);
+  } else if (manifest && typeof manifest === 'object') {
+    const sell = Array.isArray(manifest.sell) ? manifest.sell : [];
+    const buy = Array.isArray(manifest.buy) ? manifest.buy : [];
+    summary = { sell, buy };
+  }
+
+  const hasOps = Array.isArray(manifest)
+    ? manifest.length > 0
+    : ((summary?.sell?.length ?? 0) + (summary?.buy?.length ?? 0)) > 0;
+
+  if (!hasOps) {
     world.market.tripInProgress = false;
     return;
   }
-  transactAtMarket(world, manifest);
+
+  const result = transactAtMarket(world, manifest, summary);
+  if (!result.ok && Array.isArray(world.logs)) {
+    world.logs.push(`Market trip failed during task execution: ${result.reason}`);
+  }
 }
 
 function clampRoots(world, p) {

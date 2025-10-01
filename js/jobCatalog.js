@@ -1,5 +1,7 @@
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { findField, recordJobCompletion, parcelCenter } from './world.js';
+import { computeMarketManifest, transactAtMarket } from './market.js';
+import { simulateManifest } from './sim/market_exec.js';
 import {
   RATES,
   plough,
@@ -126,15 +128,43 @@ export function instantiateJob(world, jobDef) {
       };
     }
     case 'market': {
+      const plan = computeMarketManifest(world, jobDef.request ?? {});
+      if (!plan.manifest.length) return null;
+      if (!plan.simulation?.ok) return null;
       const job = cartToMarket();
       const hours = ensureJobHours(jobDef, job);
-      return {
+      const baseLabel = jobDef.label ?? job.operation ?? job.kind;
+      const label = plan.reason ? `${baseLabel} (${plan.reason})` : baseLabel;
+      const runtime = {
         ...job,
         id: jobDef.id,
-        label: jobDef.label ?? job.operation ?? job.kind,
+        label,
         hours,
         target: marketCenter(world),
+        manifestOps: plan.manifest,
+        manifestSummary: { sell: plan.sell, buy: plan.buy },
+        manifestReason: plan.reason,
       };
+      runtime.canApply = (worldState) => {
+        const sim = simulateManifest(worldState.store, worldState.cash, runtime.manifestOps);
+        if (!sim.ok && Array.isArray(worldState?.logs)) {
+          worldState.logs.push(`Market trip aborted: ${sim.reason}`);
+        }
+        return !!sim.ok;
+      };
+      runtime.apply = (worldState) => {
+        const result = transactAtMarket(worldState, runtime.manifestOps, runtime.manifestSummary);
+        if (!result.ok) {
+          if (Array.isArray(worldState.logs)) {
+            worldState.logs.push(`Market trip failed at settlement: ${result.reason}`);
+          }
+        } else if (Array.isArray(worldState.logs)) {
+          const reasonNote = runtime.manifestReason ? ` – ${runtime.manifestReason}` : '';
+          worldState.logs.push(`Market trip completed${reasonNote}`);
+        }
+        return worldState;
+      };
+      return runtime;
     }
     default:
       return null;

@@ -1,6 +1,7 @@
 import { PRICES, DAYS_PER_MONTH } from './constants.js';
 import { MINUTES_PER_DAY, CALENDAR } from './time.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { simulateManifest, applyManifest, operationsToSummary } from './sim/market_exec.js';
 
 const PACK = CONFIG_PACK_V1;
 const RULES = PACK.rules || {};
@@ -106,6 +107,71 @@ function normaliseRequest(request) {
   return { buy, sell };
 }
 
+function evaluateMarketNeeds(world, thresholds) {
+  const store = world.store || {};
+  const seeds = store.seed || {};
+  const buySeeds = SEED_KEYS.some((key) => (seeds[key] ?? 0) < (thresholds.seeds?.[key] ?? 0));
+  const buyFeed = (store.hay ?? 0) < (thresholds.hay_min ?? 0);
+  const grainTotal = (store.wheat ?? 0) + (store.barley ?? 0) + (store.oats ?? 0) + (store.pulses ?? 0);
+  const sellGrain = grainTotal > (thresholds.grain_surplus ?? Infinity);
+  const debtDue = !!(world.finance?.loanDueWithinHours?.(DEBT_HORIZON_HOURS))
+    && (world.finance?.cash ?? world.cash ?? 0) < (thresholds.cash_min ?? 0);
+  return { buySeeds, buyFeed, sellGrain, debtDue };
+}
+
+function requestReason(request) {
+  if (!request) return null;
+  if (typeof request.reason === 'string' && request.reason.trim()) return request.reason.trim();
+  const lines = [];
+  if (Array.isArray(request.buy)) lines.push(...request.buy);
+  if (Array.isArray(request.sell)) lines.push(...request.sell);
+  for (const line of lines) {
+    if (line && typeof line.reason === 'string' && line.reason.trim()) {
+      return line.reason.trim();
+    }
+  }
+  return null;
+}
+
+function manifestLinesToOperations(world, manifest) {
+  if (!manifest) return [];
+  const month = world.calendar?.month;
+  const ops = [];
+  for (const line of manifest.sell || []) {
+    const qty = Number(line?.qty);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    ops.push({
+      kind: 'sell',
+      item: line.item,
+      qty,
+      unitPrice: priceFor(line.item, month),
+    });
+  }
+  for (const line of manifest.buy || []) {
+    const qty = Number(line?.qty);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    ops.push({
+      kind: 'buy',
+      item: line.item,
+      qty,
+      unitPrice: priceFor(line.item, month),
+    });
+  }
+  return ops;
+}
+
+function deriveManifestReason(request, flags, ops) {
+  const explicit = requestReason(request);
+  if (explicit) return explicit;
+  if (flags.buyFeed) return 'hay shortage';
+  if (flags.buySeeds) return 'seed shortage';
+  if (flags.debtDue) return 'raise cash for debt';
+  if (flags.sellGrain) return 'reduce grain surplus';
+  if (ops.some((op) => op.kind === 'buy')) return 'market purchases';
+  if (ops.some((op) => op.kind === 'sell')) return 'market sales';
+  return null;
+}
+
 function lineRevenue(world, line) {
   return (line?.qty ?? 0) * priceFor(line.item, world.calendar.month);
 }
@@ -205,6 +271,27 @@ export function estimateManifestValue(world, request = {}) {
   return buildMarketManifest(world, request).value;
 }
 
+export function computeMarketManifest(world, request = {}) {
+  ensureMarketState(world);
+  const thresholds = world.thresholds;
+  const needs = evaluateMarketNeeds(world, thresholds);
+  const manifest = buildMarketManifest(world, request);
+  const ops = manifestLinesToOperations(world, manifest);
+  const reason = deriveManifestReason(request, needs, ops);
+  const simulation = simulateManifest(world.store, world.cash, ops);
+  return {
+    manifest: ops,
+    sell: manifest.sell,
+    buy: manifest.buy,
+    value: manifest.value,
+    revenue: manifest.revenue,
+    cost: manifest.cost,
+    reason,
+    needs,
+    simulation,
+  };
+}
+
 function absoluteMinutes(world) {
   const monthIndex = Number.isFinite(world.calendar?.monthIndex)
     ? world.calendar.monthIndex
@@ -258,17 +345,10 @@ export function travelPenalty(world) {
 
 export function needsMarketTrip(world, request = {}) {
   ensureMarketState(world);
+  const plan = computeMarketManifest(world, request);
   const thresholds = world.thresholds;
-  const store = world.store || {};
-  const seeds = store.seed || {};
-  const buySeeds = SEED_KEYS.some((key) => (seeds[key] ?? 0) < (thresholds.seeds?.[key] ?? 0));
-  const buyFeed = (store.hay ?? 0) < (thresholds.hay_min ?? 0);
-  const grainTotal = (store.wheat ?? 0) + (store.barley ?? 0) + (store.oats ?? 0) + (store.pulses ?? 0);
-  const sellGrain = grainTotal > (thresholds.grain_surplus ?? Infinity);
-  const debtDue = !!(world.finance?.loanDueWithinHours?.(DEBT_HORIZON_HOURS))
-    && (world.finance?.cash ?? world.cash ?? 0) < (thresholds.cash_min ?? 0);
-  const manifest = buildMarketManifest(world, request);
-  const manifestValue = manifest.value;
+  const { buySeeds, buyFeed, sellGrain, debtDue } = plan.needs;
+  const manifestValue = plan.value;
   const travelCost = estimateTripCost(world);
   const minValueBase = thresholds.manifest_value_min ?? DEFAULT_MANIFEST_VALUE_MIN;
   const essentialWeight = MANIFEST_DISCOUNTS.essential ?? 1;
@@ -280,52 +360,37 @@ export function needsMarketTrip(world, request = {}) {
   const goodTrade = manifestValue >= Math.max(minValue, tradeThreshold);
   const lastTrip = world.market.lastTripAt ?? -Infinity;
   const cooldownOk = (absoluteMinutes(world) - lastTrip) >= (world.market.cooldownMin ?? DEFAULT_COOLDOWN_MIN);
-  const hasManifest = (manifest.sell.length + manifest.buy.length) > 0;
-  const ok = hasManifest && (buySeeds || buyFeed || sellGrain || debtDue) && goodTrade && cooldownOk;
-  return { ok, buySeeds, buyFeed, sellGrain, debtDue, manifest, manifestValue, travelCost, goodTrade, cooldownOk };
+  const hasManifest = (plan.sell.length + plan.buy.length) > 0;
+  const manifestViable = !!plan.simulation?.ok;
+  const ok = hasManifest && manifestViable && (buySeeds || buyFeed || sellGrain || debtDue) && goodTrade && cooldownOk;
+  return {
+    ok,
+    buySeeds,
+    buyFeed,
+    sellGrain,
+    debtDue,
+    manifest: { sell: plan.sell, buy: plan.buy },
+    manifestOps: plan.manifest,
+    manifestValue,
+    travelCost,
+    goodTrade,
+    cooldownOk,
+    reason: plan.reason,
+    simulation: plan.simulation,
+  };
 }
 
-export function transactAtMarket(world, manifest) {
+export function transactAtMarket(world, manifest, summary = null) {
   ensureMarketState(world);
-  const month = world.calendar.month;
-  let cashDelta = 0;
-  for (const line of manifest.sell || []) {
-    const qty = Math.max(0, line.qty ?? 0);
-    if (qty <= 0) continue;
-    switch (line.item) {
-      case 'wheat_bu': world.store.wheat = Math.max(0, (world.store.wheat ?? 0) - qty); break;
-      case 'barley_bu': world.store.barley = Math.max(0, (world.store.barley ?? 0) - qty); break;
-      case 'oats_bu': world.store.oats = Math.max(0, (world.store.oats ?? 0) - qty); break;
-      case 'pulses_bu': world.store.pulses = Math.max(0, (world.store.pulses ?? 0) - qty); break;
-      case 'hay_t': world.store.hay = Math.max(0, (world.store.hay ?? 0) - qty); break;
-      case 'straw_t': world.store.straw = Math.max(0, (world.store.straw ?? 0) - qty); break;
-      case 'cider_l': world.store.cider_l = Math.max(0, (world.store.cider_l ?? 0) - qty); break;
-      case 'meat_lb': world.store.meat_salted = Math.max(0, (world.store.meat_salted ?? 0) - qty); break;
-      case 'bacon_side': world.store.bacon_sides = Math.max(0, (world.store.bacon_sides ?? 0) - qty); break;
-      default: break;
-    }
-    cashDelta += qty * priceFor(line.item, month);
-  }
-  for (const line of manifest.buy || []) {
-    const qty = Math.max(0, line.qty ?? 0);
-    if (qty <= 0) continue;
-    switch (line.item) {
-      case 'seed_wheat_bu': world.store.seed.wheat = (world.store.seed.wheat ?? 0) + qty; break;
-      case 'seed_barley_bu': world.store.seed.barley = (world.store.seed.barley ?? 0) + qty; break;
-      case 'seed_oats_bu': world.store.seed.oats = (world.store.seed.oats ?? 0) + qty; break;
-      case 'seed_pulses_bu': world.store.seed.pulses = (world.store.seed.pulses ?? 0) + qty; break;
-      case 'oats_bu': world.store.oats = (world.store.oats ?? 0) + qty; break;
-      case 'hay_t': world.store.hay = (world.store.hay ?? 0) + qty; break;
-      default: break;
-    }
-    cashDelta -= qty * priceFor(line.item, month);
-  }
-  world.cash = (world.cash ?? 0) + cashDelta;
+  const ops = Array.isArray(manifest) ? manifest : manifestLinesToOperations(world, manifest);
+  const result = applyManifest(world, ops);
+  if (!result.ok) return result;
   world.finance.cash = world.cash;
   world.market.lastTripAt = absoluteMinutes(world);
   world.market.tripInProgress = false;
-  world.market.lastPlannedManifest = manifest;
-  return cashDelta;
+  const summaryManifest = summary ?? operationsToSummary(ops);
+  world.market.lastPlannedManifest = summaryManifest;
+  return { ok: true, manifest: summaryManifest };
 }
 
 export { MOVE_MIN_PER_STEP, LOAD_UNLOAD_MIN };

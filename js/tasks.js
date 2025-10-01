@@ -4,6 +4,7 @@ import {
 } from './constants.js';
 import { updateFieldCrop, updateFieldPhase, moveLivestock, findField } from './world.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { needsMarketTrip } from './market.js';
 
 const PACK = CONFIG_PACK_V1;
 const RATE_MINUTES = PACK.rates || {};
@@ -176,15 +177,8 @@ export function cartToMarket() {
 }
 
 export function shouldGoToMarket(world) {
-  const store = world?.store ?? {};
-  const lowOats = (store.oats ?? 0) < OATS_LOW_THRESHOLD;
-  const surplus = (store.barley ?? 0) > 280 || (store.pulses ?? 0) > 140;
-  const parcels = Array.isArray(world?.parcels) ? world.parcels : [];
-  const pendingSeed = parcels.some((f) => f.phase === 'needs_seed');
-  const buyingSeed = world.tasks?.month?.queued?.some(
-    (t) => t.kind === 'CartToMarket' && t.payload?.request?.buy?.some((b) => b.item.startsWith('seed_')),
-  );
-  return Boolean(lowOats || surplus || (pendingSeed && !buyingSeed));
+  const result = needsMarketTrip(world);
+  return Boolean(result?.ok);
 }
 
 function nextTaskId(world) {
