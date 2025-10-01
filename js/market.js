@@ -75,6 +75,10 @@ export function ensureMarketState(world) {
   if (!('lastTripAt' in world.market)) world.market.lastTripAt = -Infinity;
   if (!('lastPlannedManifest' in world.market)) world.market.lastPlannedManifest = null;
   if (!('cooldownMin' in world.market)) world.market.cooldownMin = DEFAULT_COOLDOWN_MIN;
+  if (!('nextManifestOps' in world.market)) world.market.nextManifestOps = null;
+  if (!('nextManifestSummary' in world.market)) world.market.nextManifestSummary = null;
+  if (!('nextManifestReason' in world.market)) world.market.nextManifestReason = null;
+  if (!('nextManifestRequest' in world.market)) world.market.nextManifestRequest = null;
 }
 
 export function priceFor(item, month) {
@@ -158,6 +162,24 @@ function manifestLinesToOperations(world, manifest) {
     });
   }
   return ops;
+}
+
+function formatNumber(value) {
+  if (!Number.isFinite(value)) return `${value}`;
+  const rounded = Math.round(value);
+  if (Math.abs(value - rounded) < 1e-9) return `${rounded}`;
+  return value.toFixed(2);
+}
+
+function formatManifestOps(ops) {
+  if (!Array.isArray(ops) || !ops.length) return '';
+  return ops
+    .map((op) => {
+      const qty = formatNumber(op.qty);
+      const price = formatNumber(op.unitPrice ?? 0);
+      return `${op.kind} ${qty} ${op.item}@${price}`;
+    })
+    .join(', ');
 }
 
 function deriveManifestReason(request, flags, ops) {
@@ -383,6 +405,7 @@ export function needsMarketTrip(world, request = {}) {
 export function transactAtMarket(world, manifest, summary = null) {
   ensureMarketState(world);
   const ops = Array.isArray(manifest) ? manifest : manifestLinesToOperations(world, manifest);
+  const beforeCash = world.cash ?? 0;
   const result = applyManifest(world, ops);
   if (!result.ok) return result;
   world.finance.cash = world.cash;
@@ -390,6 +413,11 @@ export function transactAtMarket(world, manifest, summary = null) {
   world.market.tripInProgress = false;
   const summaryManifest = summary ?? operationsToSummary(ops);
   world.market.lastPlannedManifest = summaryManifest;
+  if (Array.isArray(world.logs)) {
+    const opsSummary = formatManifestOps(ops);
+    if (opsSummary) world.logs.push(`Market ops: ${opsSummary}`);
+    world.logs.push(`Cash: ${formatNumber(beforeCash)} → ${formatNumber(world.cash ?? 0)}`);
+  }
   return { ok: true, manifest: summaryManifest };
 }
 

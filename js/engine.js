@@ -1,5 +1,5 @@
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
-import { shouldGoToMarket } from './tasks.js';
+import { canScheduleMarketTrip } from './jobs/market_trip.js';
 import { pickNextTask, monthIndexFromLabel } from './scheduler.js';
 import { instantiateJob, applyJobCompletion, simMinutesForHours } from './jobCatalog.js';
 import { consume } from './labour.js';
@@ -107,7 +107,7 @@ function ensureGuards(state) {
   if (!state.guards) {
     state.guards = {};
   }
-  state.guards.hasTradeNeed = (engineState) => shouldGoToMarket(engineState.world);
+  state.guards.hasTradeNeed = (engineState) => canScheduleMarketTrip(engineState.world);
 }
 
 function consumeLabour(state, simMin, reason) {
@@ -361,7 +361,7 @@ export function createEngineState(world) {
       year: world?.calendar?.year ?? 1,
     },
     guards: {
-      hasTradeNeed: (engineState) => shouldGoToMarket(engineState.world),
+      hasTradeNeed: (engineState) => canScheduleMarketTrip(engineState.world),
     },
     stepCost: STEP_COST_DEFAULT,
     labour: { totalSimMin: 0, travelSimMin: 0, workSimMin: 0 },
