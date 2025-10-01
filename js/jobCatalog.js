@@ -1,6 +1,7 @@
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { findField, recordJobCompletion, parcelCenter } from './world.js';
-import { computeMarketManifest, transactAtMarket } from './market.js';
+import { transactAtMarket } from './market.js';
+import { canScheduleMarketTrip } from './jobs/market_trip.js';
 import { simulateManifest } from './sim/market_exec.js';
 import {
   RATES,
@@ -128,22 +129,21 @@ export function instantiateJob(world, jobDef) {
       };
     }
     case 'market': {
-      const plan = computeMarketManifest(world, jobDef.request ?? {});
-      if (!plan.manifest.length) return null;
-      if (!plan.simulation?.ok) return null;
+      const gate = canScheduleMarketTrip(world, jobDef.request ?? {});
+      if (!gate.ok || !(gate.manifest?.length)) return null;
       const job = cartToMarket();
       const hours = ensureJobHours(jobDef, job);
       const baseLabel = jobDef.label ?? job.operation ?? job.kind;
-      const label = plan.reason ? `${baseLabel} (${plan.reason})` : baseLabel;
+      const label = gate.reason ? `${baseLabel} (${gate.reason})` : baseLabel;
       const runtime = {
         ...job,
         id: jobDef.id,
         label,
         hours,
         target: marketCenter(world),
-        manifestOps: plan.manifest,
-        manifestSummary: { sell: plan.sell, buy: plan.buy },
-        manifestReason: plan.reason,
+        manifestOps: gate.manifest,
+        manifestSummary: gate.summary ?? { sell: [], buy: [] },
+        manifestReason: gate.reason,
       };
       runtime.canApply = (worldState) => {
         const sim = simulateManifest(worldState.store, worldState.cash, runtime.manifestOps);

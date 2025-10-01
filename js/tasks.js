@@ -4,7 +4,7 @@ import {
 } from './constants.js';
 import { updateFieldCrop, updateFieldPhase, moveLivestock, findField } from './world.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
-import { needsMarketTrip } from './market.js';
+import { canScheduleMarketTrip } from './jobs/market_trip.js';
 
 const PACK = CONFIG_PACK_V1;
 const RATE_MINUTES = PACK.rates || {};
@@ -177,8 +177,8 @@ export function cartToMarket() {
 }
 
 export function shouldGoToMarket(world) {
-  const result = needsMarketTrip(world);
-  return Boolean(result?.ok);
+  const gate = canScheduleMarketTrip(world);
+  return Boolean(gate?.ok);
 }
 
 function nextTaskId(world) {

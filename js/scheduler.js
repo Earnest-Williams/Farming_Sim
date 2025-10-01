@@ -40,7 +40,11 @@ export function guardAllows(state, job) {
   if (!job?.guard) return true;
   const fn = state?.guards?.[job.guard];
   if (typeof fn !== 'function') return false;
-  return !!fn(state);
+  const result = fn(state);
+  if (result && typeof result === 'object') {
+    return !!result.ok;
+  }
+  return !!result;
 }
 
 export function isEligible(state, job) {
