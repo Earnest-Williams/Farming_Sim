@@ -59,6 +59,46 @@ function makeWorldForLowValueManifest() {
   };
 }
 
+function makeWorldForHaySurplus() {
+  return {
+    calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
+    store: {
+      hay: 20,
+      wheat: 120,
+      barley: 120,
+      oats: 120,
+      pulses: 120,
+      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+    },
+    finance: { loanDueWithinHours: () => false, cash: 100 },
+    market: {
+      lastTripAt: -Infinity,
+      cooldownMin: 0,
+    },
+    cash: 100,
+  };
+}
+
+function makeWorldForManualRequest() {
+  return {
+    calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
+    store: {
+      hay: 6,
+      wheat: 120,
+      barley: 120,
+      oats: 120,
+      pulses: 120,
+      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+    },
+    finance: { loanDueWithinHours: () => false, cash: 100 },
+    market: {
+      lastTripAt: -Infinity,
+      cooldownMin: 0,
+    },
+    cash: 100,
+  };
+}
+
 test('canScheduleMarketTrip mirrors needsMarketTrip rejection for low-value manifests', () => {
   const request = { buy: [{ item: 'hay_t', qty: 1, reason: 'top up hay' }] };
   const needsWorld = makeWorldForLowValueManifest();
@@ -99,4 +139,45 @@ test('computeMarketManifest buys pulse seed when inventory is low', () => {
 
   assert.ok(pulseSeedLine, 'Expected manifest to include a pulse seed purchase line');
   assert.ok(pulseSeedLine.qty > 0, 'Expected positive quantity for pulse seed purchase');
+});
+
+test('hay surplus manifests trigger market trips', () => {
+  const needsWorld = makeWorldForHaySurplus();
+  const scheduleWorld = makeWorldForHaySurplus();
+
+  const needs = needsMarketTrip(needsWorld);
+  assert.equal(needs.sellHay, true, 'Expected hay surplus to be detected');
+  assert.equal(needs.ok, true, 'Hay surplus manifest should be approved');
+  assert.ok(
+    needs.manifest.sell.some((line) => line.item === 'hay_t' && line.qty > 0),
+    'Manifest should include hay sale line',
+  );
+
+  const gate = canScheduleMarketTrip(scheduleWorld);
+  assert.equal(gate.ok, true, 'Scheduler should approve hay surplus manifest');
+  assert.ok(
+    gate.manifest.some((op) => op.kind === 'sell' && op.item === 'hay_t'),
+    'Scheduler should schedule hay sale operation',
+  );
+});
+
+test('explicit market requests trigger market trips', () => {
+  const request = { buy: [{ item: 'straw_t', qty: 5, reason: 'restock straw' }] };
+  const needsWorld = makeWorldForManualRequest();
+  const scheduleWorld = makeWorldForManualRequest();
+
+  const needs = needsMarketTrip(needsWorld, request);
+  assert.equal(needs.requestLines, true, 'Expected request lines to be detected');
+  assert.equal(needs.ok, true, 'Manual request manifest should be approved');
+  assert.ok(
+    needs.manifest.buy.some((line) => line.item === 'straw_t' && line.qty > 0),
+    'Manifest should include requested straw purchase',
+  );
+
+  const gate = canScheduleMarketTrip(scheduleWorld, request);
+  assert.equal(gate.ok, true, 'Scheduler should approve manual request');
+  assert.ok(
+    gate.manifest.some((op) => op.kind === 'buy' && op.item === 'straw_t'),
+    'Scheduler should schedule straw purchase operation',
+  );
 });
