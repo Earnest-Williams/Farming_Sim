@@ -6,6 +6,7 @@ import {
   testMonthRolloverBoundaries,
   testOneBasedMonthIndex,
 } from './simulation-clock.test.js';
+import { testSeasonOfMonthAcceptsRomanNumerals } from './constants.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -15,6 +16,7 @@ const tests = [
   ['world farmer mirrors engine state', testWorldFarmerStateSync],
   ['month rollover boundaries', testMonthRolloverBoundaries],
   ['one-based month index preserves first month', testOneBasedMonthIndex],
+  ['season helper accepts roman numerals', testSeasonOfMonthAcceptsRomanNumerals],
 ];
 
 let failed = false;

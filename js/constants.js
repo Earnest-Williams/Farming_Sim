@@ -11,16 +11,42 @@ export const DAYS_PER_YEAR = DAYS_PER_MONTH * MONTHS_PER_YEAR;
 export const SEASONS = ["Spring","Spring","Summer","Summer","Autumn","Autumn","Winter","Winter"];
 export const MONTH_NAMES = Object.freeze([...PACK.calendar.months]);
 
+export function normalizeMonth(month) {
+  if (Number.isFinite(month)) {
+    const int = Math.floor(month);
+    if (int >= 1 && int <= MONTHS_PER_YEAR) return int;
+    if (int >= 0 && int < MONTHS_PER_YEAR) return int + 1;
+  }
+  if (typeof month === 'string') {
+    const trimmed = month.trim();
+    if (trimmed.length > 0) {
+      const parsed = Number.parseInt(trimmed, 10);
+      if (Number.isFinite(parsed)) {
+        return normalizeMonth(parsed);
+      }
+      const directIdx = MONTH_NAMES.indexOf(trimmed);
+      if (directIdx >= 0) return directIdx + 1;
+      const upperIdx = MONTH_NAMES.indexOf(trimmed.toUpperCase());
+      if (upperIdx >= 0) return upperIdx + 1;
+    }
+  }
+  return 1;
+}
+
 export function seasonOfMonth(m) {
-  return SEASONS[(m - 1) % 8];
+  const month = normalizeMonth(m);
+  const idx = ((month - 1) % SEASONS.length + SEASONS.length) % SEASONS.length;
+  return SEASONS[idx];
 }
 
 export function isGrowingMonth(m) {
-  return (m >= 1 && m <= 4);
+  const month = normalizeMonth(m);
+  return (month >= 1 && month <= 4);
 }
 
 export function isWinterMonth(m) {
-  return (m === 7 || m === 8);
+  const month = normalizeMonth(m);
+  return (month === 7 || month === 8);
 }
 
 export const N_MAX = 1.15;
