@@ -5,6 +5,11 @@ import {
   THRESH_LOSS,
   CROPS,
   TASK_KINDS } from './constants.js';
+import {
+  WINNOWABLE_PLANTS,
+  getPlantById,
+  getPlantForSheafKey,
+} from './config/plants.js';
 import { attachPastureIfNeeded, stamp } from './world.js';
 import { transactAtMarket, ensureMarketState, computeMarketManifest } from './market.js';
 import { operationsToSummary } from './sim/market_exec.js';
@@ -163,55 +168,46 @@ function stackRicks(world) {
   world.stackReady = true;
 }
 
-const SHEAF_KEY_TO_STORE_FIELD = {
-  W: 'wheat',
-  B: 'barley',
-  O: 'oats',
-  P: 'pulses',
-  WHEAT: 'wheat',
-  BARLEY: 'barley',
-  OATS: 'oats',
-  PULSES: 'pulses',
-};
-
-const SHEAF_KEY_TO_STRAW_KEY = {
-  W: 'WHEAT',
-  B: 'BARLEY',
-  O: 'OATS',
-  P: 'PULSES',
-  WHEAT: 'WHEAT',
-  BARLEY: 'BARLEY',
-  OATS: 'OATS',
-  PULSES: 'PULSES',
-};
-
 function threshSheaves(world, cropKey) {
   if (!world.stackReady) return;
-  const klist = cropKey ? [cropKey] : Object.keys(world.storeSheaves);
-  for (const k of klist) {
-    const sheaves = world.storeSheaves[k] || 0;
+  const keys = cropKey ? [cropKey] : Object.keys(world.storeSheaves);
+  for (const key of keys) {
+    const sheaves = world.storeSheaves[key] || 0;
     if (sheaves <= 0) continue;
-    const grainBu = sheaves * (1 - THRESH_LOSS);
-    world.storeSheaves[k] = 0;
-    const storeField = SHEAF_KEY_TO_STORE_FIELD[k] || SHEAF_KEY_TO_STORE_FIELD[k?.toUpperCase?.()];
-    if (!storeField || world.store[storeField] === undefined) {
-      log(world, `⚠️ Cannot credit grain for unsupported crop key: ${k}`);
-      world.storeSheaves[k] = sheaves;
+    const plant = getPlantForSheafKey(key);
+    if (!plant) {
+      log(world, `⚠️ Cannot credit grain for unsupported crop key: ${key}`);
       continue;
     }
-    world.store[storeField] += grainBu;
-    const strawKey = SHEAF_KEY_TO_STRAW_KEY[k] || SHEAF_KEY_TO_STRAW_KEY[k?.toUpperCase?.()];
-    const strawPerBushel = strawKey ? STRAW_PER_BUSHEL[strawKey] : undefined;
-    world.store.straw += grainBu * (strawPerBushel || 1.0);
+    const storeKey = plant.primaryYield.storeKey;
+    if (!storeKey) {
+      log(world, `⚠️ Plant ${plant.id} lacks a primary store target for sheaves`);
+      continue;
+    }
+    const grainBu = sheaves * (1 - THRESH_LOSS);
+    world.storeSheaves[key] = 0;
+    if (!Number.isFinite(world.store[storeKey])) world.store[storeKey] = 0;
+    world.store[storeKey] += grainBu;
+    const strawPerBushel = STRAW_PER_BUSHEL[plant.id] ?? 0;
+    if (!Number.isFinite(world.store.straw)) world.store.straw = 0;
+    world.store.straw += grainBu * (strawPerBushel || 0);
   }
+}
+
+function resolveWinnowTargets(cropKey) {
+  if (!cropKey) return WINNOWABLE_PLANTS;
+  const plant = getPlantById(cropKey) || getPlantForSheafKey(cropKey);
+  return plant ? [plant] : [];
 }
 
 function winnowGrain(world, cropKey) {
   const bump = 0.01;
-  if (!cropKey || cropKey === 'WHEAT') world.store.wheat *= (1 + bump);
-  if (!cropKey || cropKey === 'BARLEY') world.store.barley *= (1 + bump);
-  if (!cropKey || cropKey === 'OATS') world.store.oats *= (1 + bump);
-  if (!cropKey || cropKey === 'PULSES') world.store.pulses *= (1 + bump);
+  for (const plant of resolveWinnowTargets(cropKey)) {
+    const storeKey = plant.primaryYield.storeKey;
+    if (!storeKey) continue;
+    if (!Number.isFinite(world.store[storeKey])) world.store[storeKey] = 0;
+    world.store[storeKey] *= (1 + bump);
+  }
 }
 
 function spreadManure(world, p, nDelta) {

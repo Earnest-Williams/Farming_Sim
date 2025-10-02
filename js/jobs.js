@@ -1,5 +1,6 @@
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
-import { WORK_MINUTES, DEMAND } from './constants.js';
+import { WORK_MINUTES } from './constants.js';
+import { SEED_CONFIG_BY_PLANT_ID, GARDEN_PLANTS } from './config/plants.js';
 
 const { workStartMin, workEndMin } = CONFIG_PACK_V1.time;
 const MARKET_COOLDOWN = CONFIG_PACK_V1.rules.marketCooldownSimMin ?? 24 * 60;
@@ -7,22 +8,19 @@ const CART_CAPACITY = CONFIG_PACK_V1.rules.cartCapacity ?? 60;
 const TURNIP_SALE_PRICE = 0.25;
 
 const daylightWindow = [workStartMin ?? 6 * 60, workEndMin ?? 18 * 60];
-
-const SEED_PER_ACRE = Object.freeze({
-  BARLEY: 1.5,
-  PULSES: 1.0,
-  OATS: 1.5,
-});
+const GARDEN_CROP_IDS = Object.freeze(GARDEN_PLANTS.map((plant) => plant.id));
 
 function seedDemand(cropKey, acres) {
-  const perAcre = SEED_PER_ACRE[cropKey] ?? DEMAND.seed_bu_per_acre?.[cropKey] ?? 0;
+  const config = SEED_CONFIG_BY_PLANT_ID[cropKey];
+  const perAcre = config?.rate?.unit === 'bu_per_acre' ? config.rate.value : 0;
   return -(perAcre * acres);
 }
 
 function sowResources(cropKey, acres) {
-  const key = `seed_${cropKey.toLowerCase()}`;
+  const config = SEED_CONFIG_BY_PLANT_ID[cropKey];
+  const key = config?.resourceKey ?? (cropKey ? `seed_${cropKey.toLowerCase()}` : null);
   const qty = seedDemand(cropKey, acres);
-  return qty ? [{ key, qty }] : [];
+  return key && qty ? [{ key, qty }] : [];
 }
 
 export const JOBS = [
@@ -182,7 +180,7 @@ export const JOBS = [
     kind: 'garden_plant',
     field: 'homestead',
     acres: 0.25,
-    crops: ['onions', 'cabbages', 'carrots'],
+    crops: GARDEN_CROP_IDS,
     window: ['I', 'I'],
     allowedMonths: [1],
     allowedHours: daylightWindow,

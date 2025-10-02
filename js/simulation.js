@@ -18,6 +18,12 @@ import {
   DAYS_PER_YEAR,
   MID_MONTH_LABOUR_THRESHOLD,
 } from './constants.js';
+import {
+  WINNOWABLE_PLANTS,
+  SALVAGE_INFO_BY_ID,
+  PRIMARY_YIELD_STORE_KEY_BY_ID,
+  GARDEN_PLANTS,
+} from './config/plants.js';
 import { makeWorld } from './world.js';
 import {
   makeTask,
@@ -42,6 +48,11 @@ export { processFarmerHalfStep } from './tasks.js';
 import { assertNoWorkOutsideWindow } from './tests/invariants.js';
 
 const PASTURE_REGROWTH_RATE = PASTURE.REGROW_T_PER_ACRE_PER_DAY;
+const WINNOWABLE_STORE_KEYS = WINNOWABLE_PLANTS
+  .map((plant) => plant.primaryYield.storeKey)
+  .filter((key) => typeof key === 'string' && key.length > 0);
+const GARDEN_PLANT_IDS = Object.freeze(GARDEN_PLANTS.map((plant) => plant.id));
+const OATS_STORE_KEY = PRIMARY_YIELD_STORE_KEY_BY_ID.OATS ?? 'oats';
 
 function clampMonthIndexValue(idx) {
   if (!Number.isFinite(idx)) return 0;
@@ -74,7 +85,8 @@ function chooseFlex(world, option) {
 }
 
 function chooseFlexAuto(world) {
-  if ((world.store.oats || 0) < 40) return chooseFlex(world, 'OATS');
+  const oats = OATS_STORE_KEY ? (world.store?.[OATS_STORE_KEY] ?? 0) : 0;
+  if (oats < 40) return chooseFlex(world, 'OATS');
   return chooseFlex(world, 'FLAX');
 }
 
@@ -96,7 +108,7 @@ function generateMonthlyTasks(world, month) {
       }
       case TASK_KINDS.Winnow: {
         const store = world.store || {};
-        const grain = (store.wheat || 0) + (store.barley || 0) + (store.oats || 0) + (store.pulses || 0);
+        const grain = WINNOWABLE_STORE_KEYS.reduce((acc, key) => acc + (store[key] || 0), 0);
         return Math.max(1, grain) * WORK_MINUTES.Winnow_perBushel;
       }
       case TASK_KINDS.StackRicks: {
@@ -133,7 +145,7 @@ function generateMonthlyTasks(world, month) {
       push(TASK_KINDS.Sow, 'barley_clover', { crop: 'BARLEY', companion: 'CLOVER' }, 16, 9);
       push(TASK_KINDS.Sow, 'pulses', { crop: 'PULSES' }, 18, 8);
       push(TASK_KINDS.Sow, 'oats_close', { crop: 'OATS' }, 16, 8);
-      push(TASK_KINDS.GardenSow, 'homestead', { items: ['onions', 'cabbages', 'carrots'] }, 18, 4);
+      push(TASK_KINDS.GardenSow, 'homestead', { items: GARDEN_PLANT_IDS }, 18, 4);
       push(TASK_KINDS.MoveHerd, null, { herd: 'sheep', from: 'turnips', to: 'clover_hay' }, 4, 10);
       if (!world.flexChoice) chooseFlexAuto(world);
       break;
@@ -425,34 +437,12 @@ export function endOfYear(world) {
         const perRow = (crop.baseYield * (p.acres || 0)) / Math.max(1, p.rows.length);
         const baseYieldUnits = Math.round(perRow * moistFactor * nFactor * 0.5);
         if (baseYieldUnits > 0) {
-          let storeKey = null;
-          let salvageUnits = baseYieldUnits;
-          switch (crop.key) {
-            case CROPS.WHEAT.key:
-              storeKey = 'wheat';
-              break;
-            case CROPS.BARLEY.key:
-              storeKey = 'barley';
-              break;
-            case CROPS.OATS.key:
-              storeKey = 'oats';
-              break;
-            case CROPS.PULSES.key:
-              storeKey = 'pulses';
-              break;
-            case CROPS.TURNIPS.key:
-              storeKey = 'turnips';
-              break;
-            case CROPS.CLOVER.key:
-              storeKey = 'hay';
-              salvageUnits = Math.round(salvageUnits * 0.8);
-              break;
-            case CROPS.FLAX.key:
-              storeKey = 'flax';
-              break;
-            default:
-              storeKey = null;
-          }
+          const salvage = SALVAGE_INFO_BY_ID[crop.id] || null;
+          const storeKey = salvage?.storeKey ?? crop.primaryYield?.storeKey ?? null;
+          const multiplier = salvage?.multiplier ?? 1;
+          const salvageUnits = multiplier === 1
+            ? baseYieldUnits
+            : Math.round(baseYieldUnits * multiplier);
           if (storeKey) {
             if (!Number.isFinite(world.store[storeKey])) world.store[storeKey] = 0;
             world.store[storeKey] += salvageUnits;

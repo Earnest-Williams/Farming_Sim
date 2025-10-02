@@ -1,9 +1,15 @@
+import { SEED_CONFIGS } from './config/plants.js';
+
+const seedResourceEntries = Object.fromEntries(
+  SEED_CONFIGS
+    .filter((config) => config.resourceKey && config.inventoryKey)
+    .map((config) => [config.resourceKey, { path: ['store', 'seed', config.inventoryKey] }])
+);
+
 const RESOURCE_MAP = Object.freeze({
   cash: { path: ['cash'] },
   turnips: { path: ['store', 'turnips'] },
-  seed_barley: { path: ['store', 'seed', 'barley'] },
-  seed_oats: { path: ['store', 'seed', 'oats'] },
-  seed_pulses: { path: ['store', 'seed', 'pulses'] },
+  ...seedResourceEntries,
 });
 
 function resolveContainer(root, path, create = false) {

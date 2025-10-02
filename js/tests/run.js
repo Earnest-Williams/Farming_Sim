@@ -9,6 +9,13 @@ import {
 import { testSeasonOfMonthAcceptsRomanNumerals } from './constants.test.js';
 import { testDailyTurnMonthRollover } from './simulation-date.test.js';
 import { testAnimalSchema, testAnimalIntegration } from './animals.test.js';
+import {
+  testPlantSchema,
+  testRotationPlants,
+  testArableRenderAssets,
+  testSeedAndStrawMaps,
+  testGardenPlantsPresent,
+} from './plants.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -22,6 +29,11 @@ const tests = [
   ['season helper accepts roman numerals', testSeasonOfMonthAcceptsRomanNumerals],
   ['animal data schema validated', testAnimalSchema],
   ['animal data drives simulation', testAnimalIntegration],
+  ['plant data schema validated', testPlantSchema],
+  ['rotation plants resolvable', testRotationPlants],
+  ['arable plants provide render assets', testArableRenderAssets],
+  ['seed and straw helpers consistent', testSeedAndStrawMaps],
+  ['garden plants enumerated', testGardenPlantsPresent],
 ];
 
 let failed = false;

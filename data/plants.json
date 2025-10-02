@@ -1,0 +1,290 @@
+{
+  "rotation": ["TURNIPS", "BARLEY", "CLOVER", "WHEAT"],
+  "plants": [
+    {
+      "id": "TURNIPS",
+      "key": "T",
+      "name": "Turnips",
+      "category": "arable",
+      "type": "root",
+      "baseDays": 80,
+      "baseYield": 60,
+      "nitrogenUse": -0.1,
+      "glyphs": [".", "`", ",", "v", "w", "W"],
+      "stageSpriteIds": [11, 20, 21, 22, 23, 24],
+      "rotation": true,
+      "primaryYield": {
+        "storeKey": "turnips",
+        "marketKey": null,
+        "unit": "bu",
+        "startingQuantity": 50
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 0.2 },
+        "inventoryKey": null,
+        "resourceKey": null,
+        "marketItem": null,
+        "startingQuantity": 0
+      },
+      "aliases": ["turnips"],
+      "processing": { "winnow": false }
+    },
+    {
+      "id": "BARLEY",
+      "key": "B",
+      "name": "Barley",
+      "category": "arable",
+      "type": "grain",
+      "baseDays": 85,
+      "baseYield": 70,
+      "nitrogenUse": -0.12,
+      "glyphs": [".", ",", ";", "t", "Y", "H"],
+      "stageSpriteIds": [11, 30, 31, 32, 33, 34],
+      "rotation": true,
+      "primaryYield": {
+        "storeKey": "barley",
+        "marketKey": "barley_bu",
+        "unit": "bu",
+        "startingQuantity": 250
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 2 },
+        "inventoryKey": "barley",
+        "resourceKey": "seed_barley",
+        "marketItem": "seed_barley_bu",
+        "startingQuantity": 12
+      },
+      "sheaf": { "key": "B", "strawPerBushel": 1 },
+      "aliases": ["barley", "barley+clover"],
+      "processing": { "winnow": true }
+    },
+    {
+      "id": "CLOVER",
+      "key": "C",
+      "name": "Clover",
+      "category": "arable",
+      "type": "legume",
+      "baseDays": 70,
+      "baseYield": 25,
+      "nitrogenUse": 0.18,
+      "glyphs": [".", ",", "\"", "*", "c", "C"],
+      "stageSpriteIds": [11, 40, 41, 42, 43, 44],
+      "rotation": true,
+      "primaryYield": {
+        "storeKey": "hay",
+        "marketKey": "hay_t",
+        "unit": "t",
+        "startingQuantity": 12
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 0 },
+        "inventoryKey": null,
+        "resourceKey": null,
+        "marketItem": null,
+        "startingQuantity": 0
+      },
+      "salvage": { "storeKey": "hay", "multiplier": 0.8 },
+      "aliases": ["clover", "clover_hay"],
+      "processing": { "winnow": false }
+    },
+    {
+      "id": "WHEAT",
+      "key": "W",
+      "name": "Wheat",
+      "category": "arable",
+      "type": "grain",
+      "baseDays": 95,
+      "baseYield": 80,
+      "nitrogenUse": -0.14,
+      "glyphs": [".", ",", ";", "i", "I", "W"],
+      "stageSpriteIds": [11, 50, 51, 52, 53, 54],
+      "rotation": true,
+      "primaryYield": {
+        "storeKey": "wheat",
+        "marketKey": "wheat_bu",
+        "unit": "bu",
+        "startingQuantity": 180
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 2 },
+        "inventoryKey": "wheat",
+        "resourceKey": "seed_wheat",
+        "marketItem": "seed_wheat_bu",
+        "startingQuantity": 14
+      },
+      "sheaf": { "key": "W", "strawPerBushel": 1.2 },
+      "aliases": ["wheat", "winter_wheat"],
+      "processing": { "winnow": true }
+    },
+    {
+      "id": "OATS",
+      "key": "O",
+      "name": "Oats",
+      "category": "arable",
+      "type": "grain",
+      "baseDays": 85,
+      "baseYield": 65,
+      "nitrogenUse": -0.12,
+      "glyphs": [".", ",", ";", "t", "T", "Y"],
+      "stageSpriteIds": [11, 60, 61, 62, 63, 64],
+      "rotation": false,
+      "primaryYield": {
+        "storeKey": "oats",
+        "marketKey": "oats_bu",
+        "unit": "bu",
+        "startingQuantity": 60
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 2 },
+        "inventoryKey": "oats",
+        "resourceKey": "seed_oats",
+        "marketItem": "seed_oats_bu",
+        "startingQuantity": 10
+      },
+      "sheaf": { "key": "O", "strawPerBushel": 1.1 },
+      "aliases": ["oats", "oats_close"],
+      "processing": { "winnow": true }
+    },
+    {
+      "id": "PULSES",
+      "key": "P",
+      "name": "Beans/Peas/Vetch",
+      "category": "arable",
+      "type": "pulse",
+      "baseDays": 90,
+      "baseYield": 45,
+      "nitrogenUse": 0.06,
+      "glyphs": [".", "o", "d", "b", "8", "&"],
+      "stageSpriteIds": [11, 70, 71, 72, 73, 74],
+      "rotation": false,
+      "primaryYield": {
+        "storeKey": "pulses",
+        "marketKey": "pulses_bu",
+        "unit": "bu",
+        "startingQuantity": 120
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 1.5 },
+        "inventoryKey": "pulses",
+        "resourceKey": "seed_pulses",
+        "marketItem": "seed_pulses_bu",
+        "startingQuantity": 8
+      },
+      "sheaf": { "key": "P", "strawPerBushel": 0.6 },
+      "aliases": ["pulses", "beans_peas", "beans/peas/vetch"],
+      "processing": { "winnow": true }
+    },
+    {
+      "id": "FLAX",
+      "key": "F",
+      "name": "Flax/Hemp",
+      "category": "arable",
+      "type": "fiber",
+      "baseDays": 100,
+      "baseYield": 30,
+      "nitrogenUse": -0.1,
+      "glyphs": [".", "|", "i", "t", "T", "#"],
+      "stageSpriteIds": [11, 80, 81, 82, 83, 84],
+      "rotation": false,
+      "primaryYield": {
+        "storeKey": "flax",
+        "marketKey": null,
+        "unit": "bundle",
+        "startingQuantity": 0
+      },
+      "seed": {
+        "rate": { "unit": "bu_per_acre", "value": 0 },
+        "inventoryKey": null,
+        "resourceKey": null,
+        "marketItem": null,
+        "startingQuantity": 0
+      },
+      "aliases": ["flax"],
+      "processing": { "winnow": false }
+    },
+    {
+      "id": "onions",
+      "key": null,
+      "name": "Onions",
+      "category": "garden",
+      "type": "vegetable",
+      "baseDays": 70,
+      "baseYield": 5,
+      "nitrogenUse": -0.05,
+      "glyphs": [".", "`", ",", ";", "o", "O"],
+      "stageSpriteIds": [],
+      "rotation": false,
+      "primaryYield": {
+        "storeKey": null,
+        "marketKey": null,
+        "unit": null,
+        "startingQuantity": 0
+      },
+      "seed": {
+        "rate": { "unit": "beds", "value": 1 },
+        "inventoryKey": null,
+        "resourceKey": null,
+        "marketItem": null,
+        "startingQuantity": 0
+      },
+      "aliases": ["onions"],
+      "processing": { "winnow": false }
+    },
+    {
+      "id": "cabbages",
+      "key": null,
+      "name": "Cabbages",
+      "category": "garden",
+      "type": "vegetable",
+      "baseDays": 75,
+      "baseYield": 6,
+      "nitrogenUse": -0.04,
+      "glyphs": [".", "`", ",", "c", "C", "Q"],
+      "stageSpriteIds": [],
+      "rotation": false,
+      "primaryYield": {
+        "storeKey": null,
+        "marketKey": null,
+        "unit": null,
+        "startingQuantity": 0
+      },
+      "seed": {
+        "rate": { "unit": "beds", "value": 1 },
+        "inventoryKey": null,
+        "resourceKey": null,
+        "marketItem": null,
+        "startingQuantity": 0
+      },
+      "aliases": ["cabbages"],
+      "processing": { "winnow": false }
+    },
+    {
+      "id": "carrots",
+      "key": null,
+      "name": "Carrots",
+      "category": "garden",
+      "type": "root",
+      "baseDays": 65,
+      "baseYield": 5,
+      "nitrogenUse": -0.06,
+      "glyphs": [".", "`", ",", ";", "j", "J"],
+      "stageSpriteIds": [],
+      "rotation": false,
+      "primaryYield": {
+        "storeKey": null,
+        "marketKey": null,
+        "unit": null,
+        "startingQuantity": 0
+      },
+      "seed": {
+        "rate": { "unit": "beds", "value": 1 },
+        "inventoryKey": null,
+        "resourceKey": null,
+        "marketItem": null,
+        "startingQuantity": 0
+      },
+      "aliases": ["carrots"],
+      "processing": { "winnow": false }
+    }
+  ]
+}
