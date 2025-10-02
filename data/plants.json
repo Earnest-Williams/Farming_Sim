@@ -1,5 +1,5 @@
 {
-  "rotation": ["TURNIPS", "BARLEY", "CLOVER", "WHEAT"],
+  "rotation": ["TURNIPS", "BARLEY", "CLOVER", "WHEAT", "PULSES", "FLAX"],
   "plants": [
     {
       "id": "TURNIPS",
@@ -156,7 +156,7 @@
       "nitrogenUse": 0.06,
       "glyphs": [".", "o", "d", "b", "8", "&"],
       "stageSpriteIds": [11, 70, 71, 72, 73, 74],
-      "rotation": false,
+      "rotation": true,
       "primaryYield": {
         "storeKey": "pulses",
         "marketKey": "pulses_bu",
@@ -185,7 +185,7 @@
       "nitrogenUse": -0.1,
       "glyphs": [".", "|", "i", "t", "T", "#"],
       "stageSpriteIds": [11, 80, 81, 82, 83, 84],
-      "rotation": false,
+      "rotation": true,
       "primaryYield": {
         "storeKey": "flax",
         "marketKey": null,
