@@ -5,12 +5,19 @@ import {
   TASK_KINDS,
   WORK_MINUTES,
   LABOUR_DAY_MIN,
+  ROTATION,
 } from './constants.js';
 import { seedNeededForParcel } from './constants.js';
 import { estimateParcelYieldBushelsWithTiming, priceFor } from './state.js';
 import { makeTask } from './tasks.js';
 import { estimateRoundTripMinutes } from './market.js';
 import { ANIMALS, computeDailyNeedsForAnimal } from './config/animals.js';
+import {
+  SEED_CONFIG_BY_PLANT_ID,
+  SEED_CONFIG_BY_MARKET_ITEM,
+  PRIMARY_YIELD_MARKET_KEY_BY_ID,
+  PRIMARY_YIELD_STORE_KEY_BY_ID,
+} from './config/plants.js';
 
 function dailyFeedNeeds(world) {
   const L = world.livestock || {};
@@ -27,6 +34,9 @@ function dailyFeedNeeds(world) {
   }
   return { oats_bu, hay_t };
 }
+
+const BARLEY_STORE_KEY = PRIMARY_YIELD_STORE_KEY_BY_ID.BARLEY ?? 'barley';
+const BARLEY_MARKET_ITEM = PRIMARY_YIELD_MARKET_KEY_BY_ID.BARLEY ?? 'barley_bu';
 export function updateKPIs(world) {
   const S = world.store;
   const m = world.calendar.month;
@@ -42,13 +52,16 @@ export function updateKPIs(world) {
     if (!p.rows?.length) continue;
     const sowQueued = world.tasks?.month?.queued?.some(t => t.kind === TASK_KINDS.Sow && t.parcelId === p.id);
     if (!sowQueued) continue;
-    const cropKey = (p.status.cropNote?.includes('Wheat') || p.rotationKey === 'WHEAT') ? 'WHEAT' : (p.status.cropNote?.includes('Barley') || p.rotationKey === 'BARLEY') ? 'BARLEY' : null;
     const payloadCrop = world.tasks.month.queued.find(t => t.kind === TASK_KINDS.Sow && t.parcelId === p.id)?.payload?.crop;
-    const key = payloadCrop || cropKey;
+    const rotationPlant = Number.isInteger(p.rotationIndex) ? ROTATION[p.rotationIndex] : null;
+    const key = payloadCrop || rotationPlant?.id || null;
     if (!key) continue;
     const need = seedNeededForParcel(p, key);
-    const have = (world.store.seed[key?.toLowerCase()] ?? world.store.seed[key]) || 0;
-    if (have < need) seed_gaps.push({ parcelId: p.id, key, need, have, short: need - have });
+    if (need <= 0) continue;
+    const config = SEED_CONFIG_BY_PLANT_ID[key];
+    const inventoryKey = config?.inventoryKey ?? key.toLowerCase();
+    const have = inventoryKey ? (world.store.seed?.[inventoryKey] ?? 0) : 0;
+    if (have < need) seed_gaps.push({ parcelId: p.id, key, need, have, short: need - have, inventoryKey });
   }
   world.kpi.seed_gaps = seed_gaps;
 
@@ -82,13 +95,8 @@ export function updateKPIs(world) {
 }
 
 function expectedBushelPrice(world, key) {
-  switch (key) {
-    case 'WHEAT': return priceFor('wheat_bu', world.calendar.month);
-    case 'BARLEY': return priceFor('barley_bu', world.calendar.month);
-    case 'OATS': return priceFor('oats_bu', world.calendar.month);
-    case 'PULSES': return priceFor('pulses_bu', world.calendar.month);
-    default: return 0.5;
-  }
+  const marketKey = PRIMARY_YIELD_MARKET_KEY_BY_ID[key];
+  return marketKey ? priceFor(marketKey, world.calendar.month) : 0.5;
 }
 
 function latenessPenaltyPerDay(t) {
@@ -170,12 +178,15 @@ export function advisorSuggestions(world) {
   }
   if (K.seed_gaps.length) {
     for (const g of K.seed_gaps) {
-      const item = `seed_${g.key.toLowerCase()}_bu`;
-      sug.push({ type: 'buy', item, qty: Math.ceil(g.short), reason: `Seed gap for ${g.key}` });
+      const config = SEED_CONFIG_BY_PLANT_ID[g.key];
+      const item = config?.marketItem ?? (g.key ? `seed_${g.key.toLowerCase()}_bu` : null);
+      if (item) {
+        sug.push({ type: 'buy', item, qty: Math.ceil(g.short), reason: `Seed gap for ${g.key}` });
+      }
     }
   }
-  if (world.cash < 2 && (S.barley || 0) > 40) {
-    sug.push({ type: 'sell', items: [{ item: 'barley_bu', qty: Math.floor(S.barley * 0.1) }], reason: 'Raise cash' });
+  if (world.cash < 2 && (S[BARLEY_STORE_KEY] || 0) > 40) {
+    sug.push({ type: 'sell', items: [{ item: BARLEY_MARKET_ITEM, qty: Math.floor((S[BARLEY_STORE_KEY] || 0) * 0.1) }], reason: 'Raise cash' });
   }
   world.kpi.suggestions = sug;
   return sug;
@@ -185,14 +196,17 @@ function buy(world, item, qty) {
   const cost = qty * priceFor(item, world.calendar.month);
   if (world.cash < cost) return false;
   world.cash -= cost;
-  switch (item) {
-    case 'oats_bu': world.store.oats += qty; break;
-    case 'seed_wheat_bu': world.store.seed.wheat += qty; break;
-    case 'seed_barley_bu': world.store.seed.barley += qty; break;
-    case 'seed_oats_bu': world.store.seed.oats += qty; break;
-    default: return false;
+  if (item === 'oats_bu') {
+    world.store.oats += qty;
+    return true;
   }
-  return true;
+  const seedConfig = SEED_CONFIG_BY_MARKET_ITEM[item];
+  if (seedConfig?.inventoryKey) {
+    if (!world.store.seed) world.store.seed = {};
+    world.store.seed[seedConfig.inventoryKey] = (world.store.seed[seedConfig.inventoryKey] || 0) + qty;
+    return true;
+  }
+  return false;
 }
 
 export function advisorExecute(world, mode = 'auto') {
@@ -200,11 +214,11 @@ export function advisorExecute(world, mode = 'auto') {
   for (const s of sug) {
     if (s.type === 'buy') {
       const ok = buy(world, s.item, s.qty);
-      if (!ok) {
-        const request = {
-          buy: [{ item: s.item, qty: s.qty, reason: s.reason }],
-          sell: [{ item: 'barley_bu', qty: Math.min(world.store.barley || 0, 40), reason: 'raise_cash' }],
-        };
+        if (!ok) {
+          const request = {
+            buy: [{ item: s.item, qty: s.qty, reason: s.reason }],
+            sell: [{ item: BARLEY_MARKET_ITEM, qty: Math.min(world.store[BARLEY_STORE_KEY] || 0, 40), reason: 'raise_cash' }],
+          };
         world.tasks.month.queued.push(makeTask(world, {
           kind: TASK_KINDS.CartToMarket,
           parcelId: null,

@@ -12,6 +12,12 @@ import {
 import { DEFAULT_PACK_V1 } from './config/default-pack.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { DEFAULT_LIVESTOCK_LOCATIONS, INITIAL_HERD_LOCATIONS } from './config/animals.js';
+import {
+  SEED_CONFIGS,
+  ARABLE_PLANTS,
+  ALIAS_TO_PLANT_ID,
+  getPlantById,
+} from './config/plants.js';
 import { findParcelMeta } from './estate.js';
 import { makeRng } from './utils.js';
 import { createGrid } from './pathfinding.js';
@@ -53,24 +59,39 @@ export const LIVESTOCK = freezeDeep({
   where: LIVESTOCK_DEFAULT_WHERE,
 });
 
-const STORE_TEMPLATE = freezeDeep({
-  wheat: 180,
-  barley: 250,
-  oats: 60,
-  pulses: 120,
-  hay: 12,
+const BASE_STORE_DEFAULTS = {
   straw: 6,
-  turnips: 50,
   cider_l: 0,
   fruit_dried: 0,
   meat_salted: 0,
   bacon_sides: 0,
   eggs_dozen: 6,
   manure_units: 0,
-  seed: { wheat: 14, barley: 12, oats: 10, pulses: 8 },
+};
+
+const PLANT_STORE_DEFAULTS = Object.fromEntries(
+  ARABLE_PLANTS
+    .map((plant) => [plant.primaryYield?.storeKey, plant.primaryYield?.startingQuantity ?? 0])
+    .filter(([key]) => typeof key === 'string' && key.length > 0)
+);
+
+const SEED_STORE_DEFAULTS = Object.fromEntries(
+  SEED_CONFIGS
+    .map((config) => [config.inventoryKey, config.startingQuantity ?? 0])
+    .filter(([key]) => typeof key === 'string' && key.length > 0)
+);
+
+const STORE_TEMPLATE = freezeDeep({
+  ...BASE_STORE_DEFAULTS,
+  ...PLANT_STORE_DEFAULTS,
+  seed: SEED_STORE_DEFAULTS,
 });
 
-const STORE_SHEAVES_TEMPLATE = freezeDeep({ W: 0, B: 0, O: 0, P: 0 });
+const STORE_SHEAVES_TEMPLATE = freezeDeep(Object.fromEntries(
+  ARABLE_PLANTS
+    .filter((plant) => plant.sheaf?.key)
+    .map((plant) => [plant.sheaf.key, 0])
+));
 
 const DEFAULT_SOIL = Object.freeze({ moisture: 0.55, nitrogen: 0.6 });
 
@@ -109,22 +130,18 @@ const INITIAL_SUMMARY_BY_KEY = (() => {
   return summaries;
 })();
 
-const LEGACY_CROP_TO_CROP = Object.freeze({
-  fallow: null,
-  bare: null,
-  idle: null,
-  clover: CROPS.CLOVER,
-  clover_hay: CROPS.CLOVER,
-  'barley+clover': CROPS.BARLEY,
-  barley: CROPS.BARLEY,
-  beans_peas: CROPS.PULSES,
-  'beans/peas/vetch': CROPS.PULSES,
-  oats: CROPS.OATS,
-  turnips: CROPS.TURNIPS,
-  winter_wheat: CROPS.WHEAT,
-  pulses: CROPS.PULSES,
-  flax: CROPS.FLAX,
-});
+const LEGACY_CROP_TO_CROP = (() => {
+  const map = new Map([
+    ['fallow', null],
+    ['bare', null],
+    ['idle', null],
+  ]);
+  for (const [alias, plantId] of Object.entries(ALIAS_TO_PLANT_ID)) {
+    const plant = CROPS[plantId] || getPlantById(plantId);
+    if (plant) map.set(alias, plant);
+  }
+  return Object.freeze(Object.fromEntries(map));
+})();
 
 function resolveParcelKey(key) {
   if (key == null) return key;

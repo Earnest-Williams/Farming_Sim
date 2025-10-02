@@ -1,6 +1,14 @@
 import { DAYS_PER_MONTH as TIME_DAYS_PER_MONTH, MONTHS_PER_YEAR as TIME_MONTHS_PER_YEAR, MINUTES_PER_DAY as TIME_MINUTES_PER_DAY, DAYLIGHT } from './time.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { INITIAL_LIVESTOCK_COUNTS, PASTURE_INFO_BY_ID } from './config/animals.js';
+import {
+  CROPS as CROPS_FROM_DATA,
+  ROTATION as ROTATION_FROM_DATA,
+  STAGE_SIDS_BY_KEY,
+  CROP_GLYPHS_BY_KEY,
+  STRAW_PER_BUSHEL_BY_ID,
+  SEED_RATE_BU_PER_ACRE_BY_ID,
+} from './config/plants.js';
 
 const PACK = CONFIG_PACK_V1;
 
@@ -75,7 +83,7 @@ export const PLOUGH_TILTH_DELTA = +0.35;
 export const HARROW_TILTH_DELTA = +0.20;
 export const THRESH_LOSS = 0.02;
 
-export const STRAW_PER_BUSHEL = { WHEAT:1.2, BARLEY:1.0, OATS:1.1, PULSES:0.6 };
+export const STRAW_PER_BUSHEL = STRAW_PER_BUSHEL_BY_ID;
 export const OPT_MOIST = 0.60;
 
 export const PASTURE = {
@@ -126,9 +134,9 @@ export const PRICES = {
 
 export const DEMAND = {
   household_wheat_bu_per_day: 0.25,
-  seed_bu_per_acre: {
-    WHEAT:2.0, BARLEY:2.0, OATS:2.0, PULSES:1.5, FLAX:0.0, TURNIPS:0.2
-  }
+  seed_bu_per_acre: Object.freeze({
+    ...SEED_RATE_BU_PER_ACRE_BY_ID,
+  }),
 };
 
 export function seedNeededForParcel(p, cropKey) {
@@ -205,25 +213,9 @@ export const SID = {
   MIXED_LABEL: 200,
 };
 
-export const SID_BY_CROP = {
-  T: [SID.SOIL_TILLED, SID.T_S1, SID.T_S2, SID.T_S3, SID.T_S4, SID.T_S5],
-  B: [SID.SOIL_TILLED, SID.B_S1, SID.B_S2, SID.B_S3, SID.B_S4, SID.B_S5],
-  C: [SID.SOIL_TILLED, SID.C_S1, SID.C_S2, SID.C_S3, SID.C_S4, SID.C_S5],
-  W: [SID.SOIL_TILLED, SID.W_S1, SID.W_S2, SID.W_S3, SID.W_S4, SID.W_S5],
-  O: [SID.SOIL_TILLED, SID.O_S1, SID.O_S2, SID.O_S3, SID.O_S4, SID.O_S5],
-  P: [SID.SOIL_TILLED, SID.P_S1, SID.P_S2, SID.P_S3, SID.P_S4, SID.P_S5],
-  F: [SID.SOIL_TILLED, SID.F_S1, SID.F_S2, SID.F_S3, SID.F_S4, SID.F_S5],
-};
+export const SID_BY_CROP = STAGE_SIDS_BY_KEY;
 
-export const CROP_GLYPHS = {
-  T: ['.', '`', ',', 'v', 'w', 'W'],
-  B: ['.', ',', ';', 't', 'Y', 'H'],
-  C: ['.', ',', '"', '*', 'c', 'C'],
-  W: ['.', ',', ';', 'i', 'I', 'W'],
-  O: ['.', ',', ';', 't', 'T', 'Y'],
-  P: ['.', 'o', 'd', 'b', '8', '&'],
-  F: ['.', '|', 'i', 't', 'T', '#'],
-};
+export const CROP_GLYPHS = CROP_GLYPHS_BY_KEY;
 
 export const GRASS_GLYPHS = {
   [SID.GRASS_DRY]: '.',
@@ -232,16 +224,8 @@ export const GRASS_GLYPHS = {
   [SID.GRASS_VERY_LUSH]: '"',
 };
 
-export const CROPS = {
-  TURNIPS: { key:'T', name:'Turnips', type:'root', baseDays: 80, baseYield: 60, nUse: -0.10 },
-  BARLEY:  { key:'B', name:'Barley',  type:'grain', baseDays: 85, baseYield: 70, nUse: -0.12 },
-  CLOVER:  { key:'C', name:'Clover',  type:'legume', baseDays: 70, baseYield: 25, nUse: +0.18 },
-  WHEAT:   { key:'W', name:'Wheat',   type:'grain', baseDays: 95, baseYield: 80, nUse: -0.14 },
-  OATS:    { key:'O', name:'Oats',    type:'grain', baseDays: 85, baseYield: 65, nUse: -0.12 },
-  PULSES:  { key:'P', name:'Beans/Peas/Vetch', type:'pulse', baseDays:90, baseYield:45, nUse:+0.06 },
-  FLAX:    { key:'F', name:'Flax/Hemp', type:'fiber', baseDays:100, baseYield:30, nUse:-0.10 },
-};
+export const CROPS = CROPS_FROM_DATA;
 
-export const ROTATION = [CROPS.TURNIPS, CROPS.BARLEY, CROPS.CLOVER, CROPS.WHEAT];
+export const ROTATION = ROTATION_FROM_DATA;
 
 export const LIVESTOCK_START = Object.freeze({ ...INITIAL_LIVESTOCK_COUNTS });

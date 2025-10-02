@@ -2,6 +2,11 @@ import { PRICES, DAYS_PER_MONTH } from './constants.js';
 import { MINUTES_PER_DAY, CALENDAR } from './time.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { simulateManifest, applyManifest, operationsToSummary } from './sim/market_exec.js';
+import {
+  ARABLE_PLANTS,
+  SEED_CONFIGS,
+  SEED_CONFIG_BY_INVENTORY_KEY,
+} from './config/plants.js';
 
 const PACK = CONFIG_PACK_V1;
 const RULES = PACK.rules || {};
@@ -18,7 +23,10 @@ const TRAVEL_PENALTY_CAP = RULES.travelPenaltyCap ?? Infinity;
 const DEBT_HORIZON_HOURS = RULES.debtHorizonHours ?? 0;
 const MANIFEST_DISCOUNTS = RULES.manifestDiscounts || {};
 const BUY_UTILITY_MULTIPLIER = RULES.buyUtilityMultiplier ?? 1;
-const SEED_KEYS = Array.isArray(RULES.seedKeys) ? RULES.seedKeys : ['barley', 'pulses', 'oats', 'wheat'];
+const DEFAULT_SEED_KEYS = SEED_CONFIGS
+  .map((config) => config.inventoryKey)
+  .filter((key) => typeof key === 'string' && key.length > 0);
+const SEED_KEYS = Array.isArray(RULES.seedKeys) ? RULES.seedKeys : DEFAULT_SEED_KEYS;
 
 const MONTHS_PER_YEAR = Array.isArray(CALENDAR?.MONTHS) && CALENDAR.MONTHS.length > 0
   ? CALENDAR.MONTHS.length
@@ -34,6 +42,17 @@ const DEFAULT_THRESHOLDS = {
   cash_min: RULES.cashMin ?? 0,
   manifest_value_min: DEFAULT_MANIFEST_VALUE_MIN,
 };
+
+const MARKETABLE_GRAINS = ARABLE_PLANTS
+  .map((plant) => ({
+    plantId: plant.id,
+    storeKey: plant.primaryYield?.storeKey ?? null,
+    marketItem: plant.primaryYield?.marketKey ?? null,
+    unit: plant.primaryYield?.unit ?? null,
+  }))
+  .filter((entry) => entry.storeKey && entry.marketItem && entry.unit === 'bu');
+
+const GRAIN_STORE_KEYS = MARKETABLE_GRAINS.map((entry) => entry.storeKey);
 
 function ensureFinance(world) {
   if (!world.finance) {
@@ -93,7 +112,9 @@ export function priceFor(item, month) {
 }
 
 function seedStock(world, key) {
-  return world.store?.seed?.[key] ?? 0;
+  const config = SEED_CONFIG_BY_INVENTORY_KEY[key];
+  const resolvedKey = config?.inventoryKey ?? key;
+  return world.store?.seed?.[resolvedKey] ?? 0;
 }
 
 function clampLineQty(line, maxQty) {
@@ -121,7 +142,7 @@ function evaluateMarketNeeds(world, thresholds, request = {}) {
   const seeds = store.seed || {};
   const buySeeds = SEED_KEYS.some((key) => (seeds[key] ?? 0) < (thresholds.seeds?.[key] ?? 0));
   const buyFeed = (store.hay ?? 0) < (thresholds.hay_min ?? 0);
-  const grainTotal = (store.wheat ?? 0) + (store.barley ?? 0) + (store.oats ?? 0) + (store.pulses ?? 0);
+  const grainTotal = GRAIN_STORE_KEYS.reduce((acc, key) => acc + (store[key] ?? 0), 0);
   const sellGrain = grainTotal > (thresholds.grain_surplus ?? Infinity);
   const hayTarget = thresholds.hay_target ?? Infinity;
   const sellHay = hayTarget < Infinity && (store.hay ?? 0) > hayTarget;
@@ -212,21 +233,15 @@ function lineRevenue(world, line) {
 function addSellLines(world, sell, thresholds) {
   const S = world.store || {};
   const grainKeep = thresholds.grain_keep ?? 0;
-  const grains = [
-    { key: 'wheat', item: 'wheat_bu' },
-    { key: 'barley', item: 'barley_bu' },
-    { key: 'oats', item: 'oats_bu' },
-    { key: 'pulses', item: 'pulses_bu' },
-  ];
-  let grainSurplus = grains.reduce((acc, { key }) => acc + (S[key] ?? 0), 0) - grainKeep;
+  let grainSurplus = GRAIN_STORE_KEYS.reduce((acc, key) => acc + (S[key] ?? 0), 0) - grainKeep;
   if (grainSurplus > 0) {
-    for (const { key, item } of grains) {
+    for (const { storeKey, marketItem } of MARKETABLE_GRAINS) {
       if (grainSurplus <= 0) break;
-      const have = S[key] ?? 0;
+      const have = storeKey ? (S[storeKey] ?? 0) : 0;
       if (have <= 0) continue;
       const qty = Math.min(have, grainSurplus);
       if (qty > 0) {
-        sell.push({ item, qty });
+        sell.push({ item: marketItem, qty });
         grainSurplus -= qty;
       }
     }
@@ -242,7 +257,9 @@ function addBuyLines(world, buy, thresholds) {
     const have = seedStock(world, key);
     const target = thresholds.seeds?.[key] ?? 0;
     if (have < target) {
-      buy.push({ item: `seed_${key}_bu`, qty: Math.max(0, target - have) });
+      const config = SEED_CONFIG_BY_INVENTORY_KEY[key];
+      const item = config?.marketItem ?? `seed_${key}_bu`;
+      buy.push({ item, qty: Math.max(0, target - have) });
     }
   }
   if ((world.store?.hay ?? 0) < thresholds.hay_min) {

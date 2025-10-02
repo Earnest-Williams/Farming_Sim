@@ -5,17 +5,37 @@ import { needsMarketTrip, computeMarketManifest, transactAtMarket } from '../mar
 import { canScheduleMarketTrip } from '../jobs/market_trip.js';
 import { MINUTES_PER_DAY } from '../time.js';
 import { DAYS_PER_MONTH } from '../constants.js';
+import { ARABLE_PLANTS, SEED_CONFIGS } from '../config/plants.js';
+
+const GRAIN_STORE_KEYS = Array.from(new Set(
+  ARABLE_PLANTS
+    .filter((plant) => plant.primaryYield?.unit === 'bu' && plant.primaryYield?.storeKey)
+    .map((plant) => plant.primaryYield.storeKey)
+));
+
+const GRAIN_MARKET_ITEMS = ARABLE_PLANTS
+  .filter((plant) => plant.primaryYield?.unit === 'bu' && plant.primaryYield?.storeKey && plant.primaryYield?.marketKey)
+  .map((plant) => ({ storeKey: plant.primaryYield.storeKey, marketItem: plant.primaryYield.marketKey }));
+
+const SEED_INVENTORY_KEYS = SEED_CONFIGS
+  .map((config) => config.inventoryKey)
+  .filter((key) => typeof key === 'string' && key.length > 0);
+
+function makeGrainStore(values = {}) {
+  return Object.fromEntries(GRAIN_STORE_KEYS.map((key) => [key, values[key] ?? 0]));
+}
+
+function makeSeedStore(values = {}) {
+  return Object.fromEntries(SEED_INVENTORY_KEYS.map((key) => [key, values[key] ?? 0]));
+}
 
 function makeWorldForCooldownCheck() {
   return {
     calendar: { month: 'II', monthIndex: 1, day: 1, minute: 0 },
     store: {
       hay: 0,
-      wheat: 0,
-      barley: 0,
-      oats: 0,
-      pulses: 0,
-      seed: { wheat: 0, barley: 0, oats: 0, pulses: 0 },
+      ...makeGrainStore(),
+      seed: makeSeedStore(),
     },
     finance: { loanDueWithinHours: () => false, cash: 100 },
     market: {
@@ -67,11 +87,8 @@ function makeWorldForLowValueManifest() {
     calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
     store: {
       hay: 6,
-      wheat: 120,
-      barley: 120,
-      oats: 120,
-      pulses: 120,
-      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+      ...makeGrainStore({ wheat: 120, barley: 120, oats: 120, pulses: 120 }),
+      seed: makeSeedStore({ wheat: 12, barley: 12, oats: 12, pulses: 12 }),
     },
     finance: { loanDueWithinHours: () => false, cash: 100 },
     market: {
@@ -88,11 +105,8 @@ function makeWorldForHaySurplus() {
     calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
     store: {
       hay: 20,
-      wheat: 120,
-      barley: 120,
-      oats: 120,
-      pulses: 120,
-      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+      ...makeGrainStore({ wheat: 120, barley: 120, oats: 120, pulses: 120 }),
+      seed: makeSeedStore({ wheat: 12, barley: 12, oats: 12, pulses: 12 }),
     },
     finance: { loanDueWithinHours: () => false, cash: 100 },
     market: {
@@ -109,11 +123,8 @@ function makeWorldForGrainDistribution() {
     calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
     store: {
       hay: 6,
-      wheat: 60,
-      barley: 60,
-      oats: 60,
-      pulses: 60,
-      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+      ...makeGrainStore({ wheat: 60, barley: 60, oats: 60, pulses: 60 }),
+      seed: makeSeedStore({ wheat: 12, barley: 12, oats: 12, pulses: 12 }),
     },
     finance: { loanDueWithinHours: () => false, cash: 100 },
     market: {
@@ -134,11 +145,8 @@ function makeWorldForManualRequest() {
     calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
     store: {
       hay: 6,
-      wheat: 120,
-      barley: 120,
-      oats: 120,
-      pulses: 120,
-      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+      ...makeGrainStore({ wheat: 120, barley: 120, oats: 120, pulses: 120 }),
+      seed: makeSeedStore({ wheat: 12, barley: 12, oats: 12, pulses: 12 }),
     },
     finance: { loanDueWithinHours: () => false, cash: 100 },
     market: {
@@ -170,11 +178,8 @@ test('computeMarketManifest buys pulse seed when inventory is low', () => {
     calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
     store: {
       hay: 6,
-      wheat: 120,
-      barley: 120,
-      oats: 120,
-      pulses: 120,
-      seed: { wheat: 12, barley: 12, oats: 12, pulses: 0 },
+      ...makeGrainStore({ wheat: 120, barley: 120, oats: 120, pulses: 120 }),
+      seed: makeSeedStore({ wheat: 12, barley: 12, oats: 12, pulses: 0 }),
     },
     finance: { loanDueWithinHours: () => false, cash: 100 },
     market: {
@@ -217,12 +222,11 @@ test('grain surplus manifests sell down to the keep level across cereals', () =>
 
   assert.equal(needs.sellGrain, true, 'Expected grain surplus trigger to be active');
 
-  const grainKeys = ['wheat', 'barley', 'oats', 'pulses'];
-  const grainItems = grainKeys.map((key) => `${key}_bu`);
-  const totalGrain = grainKeys.reduce((acc, key) => acc + (world.store[key] ?? 0), 0);
+  const grainItemSet = new Set(GRAIN_MARKET_ITEMS.map(({ marketItem }) => marketItem));
+  const totalGrain = GRAIN_STORE_KEYS.reduce((acc, key) => acc + (world.store[key] ?? 0), 0);
   const grainKeep = world.thresholds.grain_keep;
 
-  const grainSellLines = needs.manifest.sell.filter((line) => grainItems.includes(line.item));
+  const grainSellLines = needs.manifest.sell.filter((line) => grainItemSet.has(line.item));
   assert.ok(grainSellLines.length > 0, 'Expected manifest to include grain sale lines');
   for (const line of grainSellLines) {
     assert.ok(line.qty > 0, `Expected positive grain sale quantity for ${line.item}`);
