@@ -151,6 +151,7 @@ function generateMonthlyTasks(world, month) {
       break;
     case 2:
       push(TASK_KINDS.DrillPlot, 'turnips', {}, 10, 9);
+      push(TASK_KINDS.HoeRow, 'turnips', {}, 14, 7);
       push(TASK_KINDS.HoeRow, 'pulses', {}, 18, 6);
       push(TASK_KINDS.HoeRow, 'oats_close', {}, 18, 6);
       push(TASK_KINDS.GardenSow, 'homestead', { items: ['succession'] }, 18, 3);
@@ -159,7 +160,7 @@ function generateMonthlyTasks(world, month) {
       break;
     case 3:
       push(TASK_KINDS.CutCloverHay, 'clover_hay', {}, 16, 9);
-      push(TASK_KINDS.HoeRow, 'turnips', {}, 18, 5);
+      push(TASK_KINDS.HoeRow, 'turnips', {}, 20, 6);
       push(TASK_KINDS.GardenSow, 'homestead', { items: ['maintenance'] }, 18, 3);
       push(TASK_KINDS.Prune, 'orchard', { light: true }, 18, 2);
       break;
