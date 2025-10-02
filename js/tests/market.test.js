@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { needsMarketTrip, computeMarketManifest } from '../market.js';
+import { needsMarketTrip, computeMarketManifest, transactAtMarket } from '../market.js';
 import { canScheduleMarketTrip } from '../jobs/market_trip.js';
 import { MINUTES_PER_DAY } from '../time.js';
 import { DAYS_PER_MONTH } from '../constants.js';
@@ -36,6 +36,30 @@ test('needsMarketTrip respects cooldown across roman numeral months', () => {
   );
   assert.ok(Array.isArray(result.manifestOps) && result.manifestOps.length > 0, 'Expected manifestOps to contain operations');
   assert.equal(result.simulation?.ok, true);
+});
+
+test('market cooldown remains monotonic across year boundaries', () => {
+  const world = makeWorldForCooldownCheck();
+  world.calendar.year = 1;
+  world.calendar.month = 'VIII';
+  world.calendar.monthIndex = 7;
+  world.calendar.day = DAYS_PER_MONTH;
+  world.calendar.minute = MINUTES_PER_DAY - 30;
+  world.market.cooldownMin = 60;
+
+  const recorded = transactAtMarket(world, []);
+  assert.equal(recorded.ok, true, 'Expected trip recording to succeed');
+
+  world.calendar = {
+    year: 2,
+    month: 'I',
+    monthIndex: 0,
+    day: 1,
+    minute: 90,
+  };
+
+  const nextTrip = needsMarketTrip(world);
+  assert.equal(nextTrip.cooldownOk, true, 'Cooldown should allow trip after year rollover');
 });
 
 function makeWorldForLowValueManifest() {

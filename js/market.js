@@ -20,6 +20,11 @@ const MANIFEST_DISCOUNTS = RULES.manifestDiscounts || {};
 const BUY_UTILITY_MULTIPLIER = RULES.buyUtilityMultiplier ?? 1;
 const SEED_KEYS = Array.isArray(RULES.seedKeys) ? RULES.seedKeys : ['barley', 'pulses', 'oats', 'wheat'];
 
+const MONTHS_PER_YEAR = Array.isArray(CALENDAR?.MONTHS) && CALENDAR.MONTHS.length > 0
+  ? CALENDAR.MONTHS.length
+  : 1;
+const MINUTES_PER_YEAR = MINUTES_PER_DAY * DAYS_PER_MONTH * MONTHS_PER_YEAR;
+
 const DEFAULT_THRESHOLDS = {
   seeds: { ...(RULES.seedMinimums || {}) },
   hay_min: RULES.hayMin ?? 0,
@@ -336,8 +341,14 @@ function absoluteMinutes(world) {
       return 0;
     })();
   const day = Math.max(1, (world.calendar?.day ?? 1));
+  const rawYear = Number(world.calendar?.year);
+  const yearIndex = Number.isFinite(rawYear)
+    ? Math.max(0, Math.floor(rawYear) - 1)
+    : 0;
   const dayIndex = (day - 1) + monthIndex * DAYS_PER_MONTH;
-  return dayIndex * MINUTES_PER_DAY + (world.calendar?.minute ?? 0);
+  const rawMinute = Number(world.calendar?.minute);
+  const minute = Number.isFinite(rawMinute) ? rawMinute : 0;
+  return (yearIndex * MINUTES_PER_YEAR) + (dayIndex * MINUTES_PER_DAY) + minute;
 }
 
 export function estimateRoundTripMinutes(world) {
