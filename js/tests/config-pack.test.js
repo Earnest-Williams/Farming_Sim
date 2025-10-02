@@ -7,8 +7,10 @@ function manhattan(a, b) {
 export function assertCloseFieldWithinSteps() {
   const farmhouse = CONFIG_PACK_V1.estate?.farmhouse;
   const parcels = Array.isArray(CONFIG_PACK_V1.estate?.parcels) ? CONFIG_PACK_V1.estate.parcels : [];
-  const closeField = parcels.find((parcel) => parcel?.key === 'oats_close')
-    ?? parcels.find((parcel) => parcel?.key?.toLowerCase?.().includes('close'));
+  const closes = Array.isArray(CONFIG_PACK_V1.estate?.closes) ? CONFIG_PACK_V1.estate.closes : [];
+  const searchPool = parcels.concat(closes);
+  const closeField = searchPool.find((parcel) => parcel?.key === 'oats_close')
+    ?? searchPool.find((parcel) => parcel?.key?.toLowerCase?.().includes('close'));
   const limit = CONFIG_PACK_V1.rules?.closeFieldMaxSteps ?? Infinity;
 
   if (!farmhouse || !closeField) {

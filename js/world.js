@@ -3,7 +3,6 @@ import {
   CONFIG,
   LIVESTOCK_START,
   CROPS,
-  ROTATION,
   PARCEL_KIND,
   ROWS_FOR_ACRES,
   CREW_SLOTS,
@@ -12,6 +11,7 @@ import {
 import { DEFAULT_PACK_V1 } from './config/default-pack.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { DEFAULT_LIVESTOCK_LOCATIONS, INITIAL_HERD_LOCATIONS } from './config/animals.js';
+import { stageNow } from './rotation.js';
 import {
   SEED_CONFIGS,
   ARABLE_PLANTS,
@@ -38,18 +38,18 @@ function freezeDeep(value) {
 }
 
 export const FIELDS = freezeDeep([
-  { key: 'turnips', acres: 8, crop: 'fallow', phase: 'stubble_manured' },
-  { key: 'barley_clover', acres: 8, crop: 'bare', phase: 'needs_plough' },
-  { key: 'clover_hay', acres: 8, crop: 'clover', phase: 'growing' },
-  { key: 'wheat', acres: 8, crop: 'winter_wheat', phase: 'tillering' },
-  { key: 'beans_peas', acres: 8, crop: 'bare', phase: 'needs_plough' },
-  { key: 'flex', acres: 8, crop: 'bare', phase: 'decision_pending' },
+  { key: 'field_1', acres: 8, crop: 'fallow', phase: 'stubble_manured' },
+  { key: 'field_2', acres: 8, crop: 'bare', phase: 'needs_plough' },
+  { key: 'field_3', acres: 8, crop: 'clover', phase: 'growing' },
+  { key: 'field_4', acres: 8, crop: 'winter_wheat', phase: 'tillering' },
+  { key: 'field_5', acres: 8, crop: 'bare', phase: 'needs_plough' },
+  { key: 'field_6', acres: 8, crop: 'bare', phase: 'decision_pending' },
 ]);
 
 export const CLOSES = freezeDeep([
-  { key: 'oats_close', acres: 3, crop: 'bare', phase: 'ready_to_sow' },
-  { key: 'B_legume', acres: 3, crop: 'bare', phase: 'idle' },
-  { key: 'C_roots', acres: 3, crop: 'bare', phase: 'plant_in_SpringII' },
+  { key: 'close_1', acres: 3, crop: 'bare', phase: 'ready_to_sow' },
+  { key: 'close_2', acres: 3, crop: 'bare', phase: 'idle' },
+  { key: 'close_3', acres: 3, crop: 'bare', phase: 'plant_in_SpringII' },
 ]);
 
 const LIVESTOCK_DEFAULT_WHERE = Object.fromEntries(Object.entries(DEFAULT_LIVESTOCK_LOCATIONS));
@@ -108,21 +108,29 @@ export const FARMHOUSE = Object.freeze({
 const PACK_PARCELS = Array.isArray(DEFAULT_PACK_V1?.estate?.parcels)
   ? DEFAULT_PACK_V1.estate.parcels.map((parcel) => clone(parcel))
   : [];
+const PACK_CLOSES = Array.isArray(DEFAULT_PACK_V1?.estate?.closes)
+  ? DEFAULT_PACK_V1.estate.closes.map((close) => clone(close))
+  : [];
 
-const PARCEL_LAYOUT = freezeDeep(PACK_PARCELS);
+const PARCEL_LAYOUT = freezeDeep([...PACK_PARCELS, ...PACK_CLOSES]);
 
 const LEGACY_TO_ACTUAL_KEY = Object.freeze({
-  beans_peas: 'pulses',
-  A_oats: 'oats_close',
-  close_a: 'oats_close',
-  C_roots: 'close_c',
   homestead_garden: 'homestead',
+  close_a: 'close_1',
+  close_b: 'close_2',
+  close_c: 'close_3',
+  a_oats: 'close_1',
+  b_legume: 'close_2',
+  c_roots: 'close_3',
 });
+
+const NUMERIC_ALIAS_RE = /^(field|close)[\s_-]?0*(\d+)$/;
 
 const INITIAL_SUMMARY_BY_KEY = (() => {
   const summaries = new Map();
   const add = (entry) => {
-    const actualKey = LEGACY_TO_ACTUAL_KEY[entry.key] || entry.key;
+    const key = typeof entry.key === 'string' ? entry.key.toLowerCase() : entry.key;
+    const actualKey = LEGACY_TO_ACTUAL_KEY[key] || entry.key;
     summaries.set(actualKey, { ...entry });
   };
   FIELDS.forEach(add);
@@ -145,7 +153,18 @@ const LEGACY_CROP_TO_CROP = (() => {
 
 function resolveParcelKey(key) {
   if (key == null) return key;
-  return LEGACY_TO_ACTUAL_KEY[key] || key;
+  const raw = String(key).trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('field_') || lower.startsWith('close_')) return lower;
+  const numeric = NUMERIC_ALIAS_RE.exec(lower);
+  if (numeric) {
+    const [, prefix, num] = numeric;
+    const parsed = Number.parseInt(num, 10);
+    const suffix = Number.isNaN(parsed) ? num : String(parsed);
+    return `${prefix}_${suffix}`;
+  }
+  return LEGACY_TO_ACTUAL_KEY[lower] || lower;
 }
 
 function clone(value) {
@@ -197,6 +216,116 @@ export function travelStepsBetween(world, from, toKey) {
 export function travelTimeBetween(world, from, toKey, stepSimMin = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5) {
   const steps = travelStepsBetween(world, from, toKey);
   return steps * (stepSimMin > 0 ? stepSimMin : 0.5);
+}
+
+const LEGACY_STAGE_ALIASES = Object.freeze({
+  barley: 'barley_clover',
+  barley_clover: 'barley_clover',
+  clover: 'clover_hay',
+  clover_hay: 'clover_hay',
+  wheat: 'wheat',
+  pulses: 'pulses',
+  beans: 'pulses',
+  peas: 'pulses',
+  beans_peas: 'pulses',
+  flex: 'flex',
+  turnip: 'turnips',
+  turnips: 'turnips',
+  oats: 'oats_close',
+  oats_close: 'oats_close',
+  grass_close: 'grass_close',
+  hay_close: 'hay_close',
+  close_a: 'oats_close',
+  close_b: 'grass_close',
+  close_c: 'hay_close',
+  a_oats: 'oats_close',
+  b_legume: 'grass_close',
+  c_roots: 'hay_close',
+});
+
+function monthIndexFromCalendarSource(source) {
+  const calendar = source?.calendar ?? {};
+  if (Number.isFinite(calendar.monthIndex)) return calendar.monthIndex;
+  if (typeof calendar.month === 'string') {
+    const months = CONFIG_PACK_V1.calendar?.months ?? [];
+    const idx = months.indexOf(calendar.month);
+    if (idx >= 0) return idx;
+  }
+  if (Number.isFinite(calendar.month)) {
+    const idx = Math.floor(calendar.month) - 1;
+    return idx >= 0 ? idx : 0;
+  }
+  return 0;
+}
+
+function collectParcelsForIndex(state) {
+  const parcels = [];
+  const seen = new Set();
+  const addCollection = (collection) => {
+    if (!Array.isArray(collection)) return;
+    for (const parcel of collection) {
+      if (!parcel || typeof parcel !== 'object') continue;
+      const key = parcel.key ?? parcel.id;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      parcels.push(parcel);
+    }
+  };
+
+  addCollection(state?.estate?.parcels);
+  addCollection(state?.estate?.closes);
+  addCollection(state?.parcels);
+  addCollection(state?.closes);
+  if (state?.lookup) {
+    addCollection(Object.values(state.lookup.parcels ?? {}));
+    addCollection(Object.values(state.lookup.closes ?? {}));
+  }
+  return parcels;
+}
+
+export function buildStageIndex(state) {
+  if (!state) return Object.create(null);
+  const base = state?.estate ? state : state?.world ?? state;
+  const monthIndex = monthIndexFromCalendarSource(base ?? state);
+  const map = Object.create(null);
+  const addStage = (parcel) => {
+    if (!parcel?.key || !parcel.rotationId) return;
+    const stage = stageNow(parcel, monthIndex);
+    if (!stage) return;
+    const bucket = map[stage] || (map[stage] = []);
+    if (!bucket.includes(parcel.key)) bucket.push(parcel.key);
+  };
+
+  const parcels = collectParcelsForIndex(base);
+  parcels.forEach(addStage);
+  return map;
+}
+
+export function resolveTargetKeys(targetName, state) {
+  if (!targetName) return [];
+  const raw = String(targetName).trim();
+  if (!raw) return [];
+  const lower = raw.toLowerCase();
+
+  if (lower.startsWith('field_') || lower.startsWith('close_')) return [lower];
+  const numeric = NUMERIC_ALIAS_RE.exec(lower);
+  if (numeric) {
+    const [, prefix, num] = numeric;
+    const parsed = Number.parseInt(num, 10);
+    const suffix = Number.isNaN(parsed) ? num : String(parsed);
+    return [`${prefix}_${suffix}`];
+  }
+
+  const direct = LEGACY_TO_ACTUAL_KEY[lower];
+  if (direct && (direct.startsWith('field_') || direct.startsWith('close_'))) {
+    return [direct];
+  }
+
+  const canonical = LEGACY_STAGE_ALIASES[lower] || lower;
+  const stageIndex = buildStageIndex(state);
+  const matches = stageIndex[canonical];
+  if (!Array.isArray(matches)) return [];
+  return matches.slice();
 }
 
 export function createInitialWorld() {
@@ -251,6 +380,9 @@ export function cloneWorld(world) {
 export function findField(world, key) {
   if (!world) return null;
   const resolved = resolveParcelKey(key);
+  if (!resolved) return null;
+  const direct = world.lookup?.parcels?.[resolved] || world.lookup?.closes?.[resolved];
+  if (direct) return direct;
   if (Number.isInteger(world?.parcelByKey?.[resolved])) {
     const idx = world.parcelByKey[resolved];
     return world.parcels?.[idx] ?? null;
@@ -312,7 +444,9 @@ export function recordJobCompletion(world, job) {
   if (!Array.isArray(world.completedJobs)) {
     world.completedJobs = [];
   }
-  world.completedJobs.push({ id: job.id, kind: job.kind, field: job.field ?? null });
+  const targetKey = job?.target?.key ?? job.field ?? null;
+  const stage = job?.target?.stage ?? null;
+  world.completedJobs.push({ id: job.id, kind: job.kind, field: targetKey, stage });
   return world.completedJobs;
 }
 
@@ -405,9 +539,7 @@ function createParcelFromTemplate(template, index) {
       _irrigatedOn: null,
     });
   }
-  const rotationIndex = Number.isInteger(template.rotationIndex) ? template.rotationIndex : null;
-  const rotationKey = template.rotationKey
-    || (rotationIndex != null && ROTATION[rotationIndex] ? ROTATION[rotationIndex].key : null);
+  const rotationIndex = Number.isInteger(template.rotationIndex) ? template.rotationIndex : 0;
   const parcel = {
     id: index,
     key: template.key,
@@ -421,8 +553,10 @@ function createParcelFromTemplate(template, index) {
     soil,
     status,
     rows,
+    rotationId: template.rotationId ?? null,
     rotationIndex,
-    rotationKey,
+    fieldNo: Number.isFinite(template.fieldNo) ? template.fieldNo : null,
+    closeNo: Number.isFinite(template.closeNo) ? template.closeNo : null,
     fieldStore: { sheaves: 0, cropKey: null },
     pasture: null,
     hayCuring: null,
@@ -501,6 +635,21 @@ export function makeWorld(seed = 12345) {
     world.parcelByKey[parcel.key] = idx;
     return parcel;
   });
+
+  const parcelLookup = {};
+  const closeLookup = {};
+  for (const parcel of world.parcels) {
+    if (!parcel?.key) continue;
+    if (parcel.fieldNo != null || parcel.kind === PARCEL_KIND.ARABLE) {
+      parcelLookup[parcel.key] = parcel;
+    }
+    if (parcel.closeNo != null || parcel.kind === 'close') {
+      closeLookup[parcel.key] = parcel;
+    }
+  }
+  world.lookup = { parcels: parcelLookup, closes: closeLookup };
+  world.fields = Object.values(parcelLookup);
+  world.closes = Object.values(closeLookup);
 
   world.pathGrid = createGrid(world);
   kpiInit(world);

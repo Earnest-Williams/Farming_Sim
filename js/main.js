@@ -1,4 +1,4 @@
-import { createInitialWorld } from './world.js';
+import { createInitialWorld, buildStageIndex, resolveTargetKeys } from './world.js';
 import { renderColored, flushLine } from './render.js';
 import {
   resetTime,
@@ -31,6 +31,7 @@ import { clamp } from './utils.js';
 import { assertConfigCompleteness } from './config/guards.js';
 import { SimulationClock } from './time/SimulationClock.js';
 import { initPathfinding } from './pathfinding.js';
+import { labelFor } from './rotation.js';
 
 assertConfigCompleteness();
 
@@ -214,6 +215,7 @@ function prepareMonth(month, { resetBudget = false } = {}) {
   const previousLabour = state.world?.labour ?? {};
   const usage = updateLabourState();
   state.monthJobs = generateMonthJobs(state.world, month);
+  state.lookup = state.world.lookup;
   refreshJobStatus();
   state.world.labour = { ...previousLabour, ...usage };
   state.lastPreparedMonth = month;
@@ -223,12 +225,19 @@ function initWorld() {
   resetTime();
   syncSimTime(clock.nowSimMin());
   state.world = createInitialWorld();
+  state.lookup = state.world.lookup;
   state.engine = createEngineState(state.world);
   updateFollowToggleLabel(state.world.camera?.follow !== false);
   resetLabour(state.world.calendar.month);
   updateLabourState();
   prepareMonth(state.world.calendar.month, { resetBudget: true });
   updateWorldDaylight();
+  if (typeof window !== 'undefined') {
+    window.appState = state;
+    window.appWorld = state.world;
+    window.appWorld.buildStageIndex = (input) => buildStageIndex(input ?? state);
+    window.appWorld.resolveTargetKeys = (name, input) => resolveTargetKeys(name, input ?? state.world);
+  }
 }
 
 function ensureMonthPrepared() {
@@ -326,6 +335,7 @@ function plannerStatusLabel(status) {
 
 function renderPlannerPanel() {
   const month = state.world.calendar.month;
+  const monthIndex = state.world.calendar.monthIndex ?? 0;
   const rows = state.monthJobs.map((job) => {
     const status = state.jobStatus.get(job.id) ?? 'planned';
     const prereqs = Array.isArray(job.prerequisites) && job.prerequisites.length > 0
@@ -340,10 +350,12 @@ function renderPlannerPanel() {
     const hoursLabel = Number.isFinite(job.hours) ? job.hours.toFixed(1) : '—';
     const acresLabel = Number.isFinite(job.acres) ? job.acres.toFixed(1) : '—';
     const label = job.label ?? job.operation ?? job.kind;
+    const parcel = state.lookup?.parcels?.[job.field] || state.lookup?.closes?.[job.field];
+    const fieldLabel = parcel ? labelFor(parcel, monthIndex) : (job.field ?? '—');
     const windowLabel = Array.isArray(job.window) ? escapeHtml(job.window.join('–')) : '—';
     return `
       <tr class="${escapeHtml(status)}">
-        <td>${escapeHtml(job.field ?? '—')}</td>
+        <td>${escapeHtml(fieldLabel)}</td>
         <td>${escapeHtml(label)}</td>
         <td>${windowLabel}</td>
         <td class="numeric">${acresLabel}</td>
@@ -428,9 +440,12 @@ function renderMessagesPanel() {
   if (!Array.isArray(state.world.completedJobs) || state.world.completedJobs.length === 0) {
     return '<p>No work completed yet this month.</p>';
   }
-  const items = state.world.completedJobs.map((job) => (
-    `<li><strong>${escapeHtml(job.kind)}</strong> on ${escapeHtml(job.field ?? 'estate')}</li>`
-  )).join('');
+  const monthIndex = state.world.calendar.monthIndex ?? 0;
+  const items = state.world.completedJobs.map((job) => {
+    const parcel = state.lookup?.parcels?.[job.field] || state.lookup?.closes?.[job.field];
+    const label = parcel ? labelFor(parcel, monthIndex) : (job.field ?? 'estate');
+    return `<li><strong>${escapeHtml(job.kind)}</strong> on ${escapeHtml(label)}</li>`;
+  }).join('');
   return `
     <section>
       <h2>Recent Work</h2>
