@@ -218,10 +218,17 @@ function addSellLines(world, sell, thresholds) {
     { key: 'oats', item: 'oats_bu' },
     { key: 'pulses', item: 'pulses_bu' },
   ];
-  for (const { key, item } of grains) {
-    const have = S[key] ?? 0;
-    if (have > grainKeep) {
-      sell.push({ item, qty: Math.max(0, have - grainKeep) });
+  let grainSurplus = grains.reduce((acc, { key }) => acc + (S[key] ?? 0), 0) - grainKeep;
+  if (grainSurplus > 0) {
+    for (const { key, item } of grains) {
+      if (grainSurplus <= 0) break;
+      const have = S[key] ?? 0;
+      if (have <= 0) continue;
+      const qty = Math.min(have, grainSurplus);
+      if (qty > 0) {
+        sell.push({ item, qty });
+        grainSurplus -= qty;
+      }
     }
   }
   if ((S.hay ?? 0) > thresholds.hay_target) {

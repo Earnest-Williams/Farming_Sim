@@ -78,7 +78,7 @@ function makeWorldForLowValueManifest() {
       lastTripAt: -Infinity,
       cooldownMin: 0,
     },
-    thresholds: { manifest_value_min: 50 },
+    thresholds: { manifest_value_min: 50, grain_keep: Infinity, grain_surplus: Infinity },
     cash: 100,
   };
 }
@@ -98,6 +98,32 @@ function makeWorldForHaySurplus() {
     market: {
       lastTripAt: -Infinity,
       cooldownMin: 0,
+    },
+    thresholds: { grain_keep: Infinity, grain_surplus: Infinity },
+    cash: 100,
+  };
+}
+
+function makeWorldForGrainDistribution() {
+  return {
+    calendar: { month: 'I', monthIndex: 0, day: 1, minute: 9 * 60 },
+    store: {
+      hay: 6,
+      wheat: 60,
+      barley: 60,
+      oats: 60,
+      pulses: 60,
+      seed: { wheat: 12, barley: 12, oats: 12, pulses: 12 },
+    },
+    finance: { loanDueWithinHours: () => false, cash: 100 },
+    market: {
+      lastTripAt: -Infinity,
+      cooldownMin: 0,
+    },
+    cart: { capacity: 500 },
+    thresholds: {
+      grain_keep: 120,
+      grain_surplus: 140,
     },
     cash: 100,
   };
@@ -183,6 +209,42 @@ test('hay surplus manifests trigger market trips', () => {
     gate.manifest.some((op) => op.kind === 'sell' && op.item === 'hay_t'),
     'Scheduler should schedule hay sale operation',
   );
+});
+
+test('grain surplus manifests sell down to the keep level across cereals', () => {
+  const world = makeWorldForGrainDistribution();
+  const needs = needsMarketTrip(world);
+
+  assert.equal(needs.sellGrain, true, 'Expected grain surplus trigger to be active');
+
+  const grainKeys = ['wheat', 'barley', 'oats', 'pulses'];
+  const grainItems = grainKeys.map((key) => `${key}_bu`);
+  const totalGrain = grainKeys.reduce((acc, key) => acc + (world.store[key] ?? 0), 0);
+  const grainKeep = world.thresholds.grain_keep;
+
+  const grainSellLines = needs.manifest.sell.filter((line) => grainItems.includes(line.item));
+  assert.ok(grainSellLines.length > 0, 'Expected manifest to include grain sale lines');
+  for (const line of grainSellLines) {
+    assert.ok(line.qty > 0, `Expected positive grain sale quantity for ${line.item}`);
+  }
+
+  const soldQty = grainSellLines.reduce((acc, line) => acc + line.qty, 0);
+  assert.equal(soldQty, totalGrain - grainKeep, 'Manifest should sell down to the keep level');
+  assert.equal(needs.ok, true, 'Manifest should be approved when grain surplus can be sold');
+
+  const record = transactAtMarket(world, needs.manifestOps, needs.manifest);
+  assert.equal(record.ok, true, 'Market transaction should succeed');
+
+  const followup = needsMarketTrip(world);
+  assert.equal(followup.sellGrain, false, 'Grain surplus trigger should clear after sales are applied');
+
+  const followupSoldQty = followup.manifest.sell
+    .filter((line) => grainItems.includes(line.item))
+    .reduce((acc, line) => acc + line.qty, 0);
+  assert.equal(followupSoldQty, 0, 'No further grain sales should be scheduled once at keep level');
+
+  const remainingGrain = grainKeys.reduce((acc, key) => acc + (world.store[key] ?? 0), 0);
+  assert.equal(remainingGrain, grainKeep, 'Grain inventory should match the keep level after sale');
 });
 
 test('explicit market requests trigger market trips', () => {
