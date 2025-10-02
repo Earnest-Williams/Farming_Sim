@@ -379,25 +379,64 @@ export function cloneWorld(world) {
 
 export function findField(world, key) {
   if (!world) return null;
-  const resolved = resolveParcelKey(key);
-  if (!resolved) return null;
-  const direct = world.lookup?.parcels?.[resolved] || world.lookup?.closes?.[resolved];
-  if (direct) return direct;
-  if (Number.isInteger(world?.parcelByKey?.[resolved])) {
-    const idx = world.parcelByKey[resolved];
-    return world.parcels?.[idx] ?? null;
-  }
-  if (Array.isArray(world?.parcels)) {
-    const parcel = world.parcels.find((p) => p.key === resolved);
-    if (parcel) return parcel;
-  }
-  if (Array.isArray(world?.fields)) {
-    const legacy = world.fields.find((f) => f.key === resolved || resolveParcelKey(f.key) === resolved);
-    if (legacy) return legacy;
-  }
-  if (Array.isArray(world?.closes)) {
-    const legacy = world.closes.find((c) => c.key === resolved || resolveParcelKey(c.key) === resolved);
-    if (legacy) return legacy;
+  const targets = resolveTargetKeys(key, world);
+  const fallback = resolveParcelKey(key);
+  const searchKeys = [];
+  if (Array.isArray(targets) && targets.length) searchKeys.push(...targets);
+  if (fallback && (!searchKeys.length || !searchKeys.includes(fallback))) searchKeys.push(fallback);
+  if (!searchKeys.length) return null;
+
+  const seen = new Set();
+  for (const candidate of searchKeys) {
+    if (candidate == null) continue;
+    const normalized = typeof candidate === 'string' ? candidate.toLowerCase() : candidate;
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    const direct = world.lookup?.parcels?.[normalized] || world.lookup?.closes?.[normalized];
+    if (direct) return direct;
+    if (Number.isInteger(world?.parcelByKey?.[normalized])) {
+      const idx = world.parcelByKey[normalized];
+      if (Array.isArray(world.parcels)) {
+        const parcel = world.parcels[idx];
+        if (parcel) return parcel;
+      }
+    }
+    if (Array.isArray(world?.parcels)) {
+      const parcel = world.parcels.find((p) => {
+        const keyLower = typeof p?.key === 'string' ? p.key.toLowerCase() : null;
+        return keyLower === normalized;
+      });
+      if (parcel) return parcel;
+    }
+    if (Array.isArray(world?.fields)) {
+      const legacy = world.fields.find((f) => {
+        const keyLower = typeof f?.key === 'string' ? f.key.toLowerCase() : null;
+        return keyLower === normalized || resolveParcelKey(f.key) === normalized;
+      });
+      if (legacy) return legacy;
+    }
+    if (Array.isArray(world?.closes)) {
+      const legacy = world.closes.find((c) => {
+        const keyLower = typeof c?.key === 'string' ? c.key.toLowerCase() : null;
+        return keyLower === normalized || resolveParcelKey(c.key) === normalized;
+      });
+      if (legacy) return legacy;
+    }
+    if (Array.isArray(world?.estate?.parcels)) {
+      const parcel = world.estate.parcels.find((p) => {
+        const keyLower = typeof p?.key === 'string' ? p.key.toLowerCase() : null;
+        return keyLower === normalized;
+      });
+      if (parcel) return parcel;
+    }
+    if (Array.isArray(world?.estate?.closes)) {
+      const parcel = world.estate.closes.find((p) => {
+        const keyLower = typeof p?.key === 'string' ? p.key.toLowerCase() : null;
+        return keyLower === normalized;
+      });
+      if (parcel) return parcel;
+    }
   }
   return null;
 }
