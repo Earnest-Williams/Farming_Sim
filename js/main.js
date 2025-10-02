@@ -31,7 +31,7 @@ import { clamp } from './utils.js';
 import { assertConfigCompleteness } from './config/guards.js';
 import { SimulationClock } from './time/SimulationClock.js';
 import { initPathfinding } from './pathfinding.js';
-import { labelFor } from './rotation.js';
+import { labelFor, stageNow } from './rotation.js';
 
 assertConfigCompleteness();
 
@@ -410,28 +410,34 @@ function renderInventoryPanel() {
 
 function renderParcelsPanel() {
   const parcels = Array.isArray(state.world.parcels) ? state.world.parcels : [];
+  const monthIndex = state.world.calendar?.monthIndex ?? 0;
+  const stageLabel = (parcel) => {
+    const stage = stageNow(parcel, monthIndex);
+    if (typeof stage === 'string' && stage.length > 0) return stage.replaceAll('_', ' ');
+    return parcel?.crop ?? '—';
+  };
   const fieldRows = parcels
     .filter((parcel) => parcel.kind === PARCEL_KIND.ARABLE)
     .map((parcel) => (
-      `<tr><th scope="row">${escapeHtml(parcel.name ?? parcel.key)}</th>` +
-      `<td>${escapeHtml(parcel.crop ?? '—')}</td>` +
+      `<tr><th scope="row">${escapeHtml(labelFor(parcel, monthIndex))}</th>` +
+      `<td>${escapeHtml(stageLabel(parcel))}</td>` +
       `<td>${escapeHtml(parcel.phase ?? '—')}</td></tr>`
     ))
     .join('');
   const closeRows = parcels
     .filter((parcel) => parcel.kind === PARCEL_KIND.CLOSE)
     .map((parcel) => (
-      `<tr><th scope="row">${escapeHtml(parcel.name ?? parcel.key)}</th>` +
-      `<td>${escapeHtml(parcel.crop ?? '—')}</td>` +
+      `<tr><th scope="row">${escapeHtml(labelFor(parcel, monthIndex))}</th>` +
+      `<td>${escapeHtml(stageLabel(parcel))}</td>` +
       `<td>${escapeHtml(parcel.phase ?? '—')}</td></tr>`
     ))
     .join('');
   return `
     <section>
       <h2>Fields</h2>
-      <table class="panel-table"><thead><tr><th>Field</th><th>Crop</th><th>Phase</th></tr></thead><tbody>${fieldRows}</tbody></table>
+      <table class="panel-table"><thead><tr><th>Field</th><th>Stage</th><th>Phase</th></tr></thead><tbody>${fieldRows}</tbody></table>
       <h2>Closes</h2>
-      <table class="panel-table"><thead><tr><th>Close</th><th>Crop</th><th>Phase</th></tr></thead><tbody>${closeRows}</tbody></table>
+      <table class="panel-table"><thead><tr><th>Close</th><th>Stage</th><th>Phase</th></tr></thead><tbody>${closeRows}</tbody></table>
     </section>
   `;
 }
