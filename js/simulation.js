@@ -14,6 +14,8 @@ import {
   PARCEL_KIND,
   DAYS_PER_MONTH,
   MONTHS_PER_YEAR,
+  MONTH_NAMES,
+  normalizeMonth,
   seasonOfMonth,
   DAYS_PER_YEAR,
   MID_MONTH_LABOUR_THRESHOLD,
@@ -41,6 +43,20 @@ export { processFarmerHalfStep } from './tasks.js';
 import { assertNoWorkOutsideWindow } from './tests/invariants.js';
 
 const PASTURE_REGROWTH_RATE = PASTURE.REGROW_T_PER_ACRE_PER_DAY;
+
+function clampMonthIndexValue(idx) {
+  if (!Number.isFinite(idx)) return 0;
+  return clamp(Math.floor(idx), 0, MONTHS_PER_YEAR - 1);
+}
+
+function resolveMonthIndex(calendar) {
+  if (!calendar) return 0;
+  if (Number.isFinite(calendar.monthIndex)) {
+    return clampMonthIndexValue(calendar.monthIndex);
+  }
+  const normalized = normalizeMonth(calendar.month);
+  return clampMonthIndexValue(normalized - 1);
+}
 
 function chooseFlex(world, option) {
   world.flexChoice = option;
@@ -181,8 +197,9 @@ function generateMonthlyTasks(world, month) {
 export function onNewMonth(world) {
   world.tasks.month = { queued: [], active: [], done: [], overdue: [] };
   world.labour.usedMin = 0;
-  world.nextTaskId = (world.calendar.month === 1 && world.calendar.day === 1) ? 0 : (world.nextTaskId || 0);
-  generateMonthlyTasks(world, world.calendar.month);
+  const monthIndex = resolveMonthIndex(world.calendar);
+  world.nextTaskId = (monthIndex === 0 && world.calendar.day === 1) ? 0 : (world.nextTaskId || 0);
+  generateMonthlyTasks(world, monthIndex + 1);
 }
 
 function midMonthReprioritise(world) {
@@ -233,7 +250,7 @@ export function stepOneMinute(world) {
 }
 
 export function pastureRegrow(world) {
-  const m = world.calendar.month;
+  const m = resolveMonthIndex(world.calendar) + 1;
   for (const p of world.parcels) {
     if (!p.pasture) continue;
     const canRegrow = (p.key === 'clover_hay') || (p.status.cropNote?.includes('aftermath'));
@@ -287,7 +304,9 @@ export function consumeLivestock(world) {
 export function updateSoilWaterDaily(world) {
   const W = world.weather;
   const rain = W.rain_mm;
-  const etp = WX_BASE[world.calendar.month].etp;
+  const monthNumber = resolveMonthIndex(world.calendar) + 1;
+  const wx = WX_BASE[monthNumber] || WX_BASE[1];
+  const etp = wx?.etp ?? 0;
   for (const p of world.parcels) {
     let m = p.soil.moisture;
     const hasCanopy = p.rows?.some(r => r.crop && (r.growth || 0) > 0.15);
@@ -356,12 +375,16 @@ export function dailyTurn(world) {
   world.calendar.day++;
   if (world.calendar.day > DAYS_PER_MONTH) {
     world.calendar.day = 1;
-    world.calendar.month++;
-    if (world.calendar.month > MONTHS_PER_YEAR) {
+    const currentIndex = resolveMonthIndex(world.calendar);
+    let nextIndex = currentIndex + 1;
+    if (nextIndex >= MONTHS_PER_YEAR) {
       endOfYear(world);
-      world.calendar.month = 1;
-      world.calendar.year++;
+      nextIndex = 0;
+      const currentYear = Number.isFinite(world.calendar.year) ? Math.floor(world.calendar.year) : 1;
+      world.calendar.year = currentYear + 1;
     }
+    world.calendar.monthIndex = nextIndex;
+    world.calendar.month = MONTH_NAMES[nextIndex] ?? MONTH_NAMES[0];
     onNewMonth(world);
   }
   const daylightIdx = dayIndex(world.calendar.day, world.calendar.month);

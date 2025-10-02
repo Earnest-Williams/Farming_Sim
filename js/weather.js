@@ -1,10 +1,10 @@
-import { WX_BASE } from './constants.js';
+import { WX_BASE, normalizeMonth } from './constants.js';
 import { randomNormal } from './utils.js';
 
 export function generateWeatherToday(world) {
-  const m = world.calendar.month;
+  const m = normalizeMonth(world.calendar.month);
   const rng = world.rng;
-  const base = WX_BASE[m];
+  const base = WX_BASE[m] || WX_BASE[1];
   const temp = base.tMean + 3.0 * randomNormal(rng);
   const wetChance = 0.45 + (base.rainMean - 2.0) * 0.06;
   const rain = (rng() < wetChance) ? Math.max(0, base.rainMean + 5 * randomNormal(rng)) : 0;
@@ -19,7 +19,7 @@ export function generateWeatherToday(world) {
 
 export function dailyWeatherEvents(world) {
   const w = world.weather;
-  const m = world.calendar.month;
+  const m = normalizeMonth(world.calendar.month);
   if (w.frostTonight) {
     const g = world.parcels[world.parcelByKey.homestead];
     g.status.frost = (g.status.frost || 0) + 1;

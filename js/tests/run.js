@@ -7,6 +7,7 @@ import {
   testOneBasedMonthIndex,
 } from './simulation-clock.test.js';
 import { testSeasonOfMonthAcceptsRomanNumerals } from './constants.test.js';
+import { testDailyTurnMonthRollover } from './simulation-date.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -15,6 +16,7 @@ const tests = [
   ['task gating by location', testTaskProgressGatedByArrival],
   ['world farmer mirrors engine state', testWorldFarmerStateSync],
   ['month rollover boundaries', testMonthRolloverBoundaries],
+  ['daily turn month rollover preserves labels', testDailyTurnMonthRollover],
   ['one-based month index preserves first month', testOneBasedMonthIndex],
   ['season helper accepts roman numerals', testSeasonOfMonthAcceptsRomanNumerals],
 ];
