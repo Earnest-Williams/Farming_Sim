@@ -1,7 +1,6 @@
 import { clamp } from './utils.js';
 import {
   CROPS,
-  RATION,
   DEMAND,
   TASK_KINDS,
   WORK_MINUTES,
@@ -11,15 +10,28 @@ import { seedNeededForParcel } from './constants.js';
 import { estimateParcelYieldBushelsWithTiming, priceFor } from './state.js';
 import { makeTask } from './tasks.js';
 import { estimateRoundTripMinutes } from './market.js';
+import { ANIMALS, computeDailyNeedsForAnimal } from './config/animals.js';
 
+function dailyFeedNeeds(world) {
+  const L = world.livestock || {};
+  const H = world.herdLoc || {};
+  let oats_bu = 0;
+  let hay_t = 0;
+  for (const animal of ANIMALS) {
+    const count = Number(L[animal.id]) || 0;
+    if (count <= 0) continue;
+    const herdLocation = H?.[animal.id] ?? L?.where?.[animal.id];
+    const needs = computeDailyNeedsForAnimal(animal, count, herdLocation);
+    oats_bu += needs.oats_bu;
+    hay_t += needs.hay_t;
+  }
+  return { oats_bu, hay_t };
+}
 export function updateKPIs(world) {
   const S = world.store;
-  const L = world.livestock;
-  const H = world.herdLoc;
   const m = world.calendar.month;
   const d = world.calendar.day;
-  const oatsDaily = (L.horses * RATION.HORSE.oats_bu) + (L.oxen * RATION.OX.oats_bu) + (L.geese * RATION.GOOSE.oats_bu) + (L.poultry * RATION.HEN.oats_bu);
-  const hayDaily = (L.horses * RATION.HORSE.hay_t) + (L.oxen * RATION.OX.hay_t) + (L.cows * RATION.COW.hay_t) + (H.sheep === 'clover_hay' ? 0 : L.sheep * RATION.SHEEP.hay_t);
+  const { oats_bu: oatsDaily, hay_t: hayDaily } = dailyFeedNeeds(world);
   const wheatDaily = DEMAND.household_wheat_bu_per_day;
   world.kpi.oats_days_cover = oatsDaily > 0 ? (S.oats / oatsDaily) : Infinity;
   world.kpi.hay_days_cover = hayDaily > 0 ? (S.hay / hayDaily) : Infinity;
@@ -152,7 +164,7 @@ export function advisorSuggestions(world) {
   const sug = [];
   if (K.oats_days_cover < 25) {
     const daysToTarget = 45 - K.oats_days_cover;
-    const dailyOats = (world.livestock.horses * RATION.HORSE.oats_bu) + (world.livestock.oxen * RATION.OX.oats_bu) + (world.livestock.geese * RATION.GOOSE.oats_bu) + (world.livestock.poultry * RATION.HEN.oats_bu);
+    const { oats_bu: dailyOats } = dailyFeedNeeds(world);
     const buyQty = Math.ceil(Math.max(0, daysToTarget) * dailyOats);
     if (buyQty > 0) sug.push({ type: 'buy', item: 'oats_bu', qty: buyQty, reason: 'Oats cover < 45 days' });
   }

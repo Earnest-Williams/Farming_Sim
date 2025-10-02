@@ -11,6 +11,7 @@ import {
 } from './constants.js';
 import { DEFAULT_PACK_V1 } from './config/default-pack.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { DEFAULT_LIVESTOCK_LOCATIONS, INITIAL_HERD_LOCATIONS } from './config/animals.js';
 import { findParcelMeta } from './estate.js';
 import { makeRng } from './utils.js';
 import { createGrid } from './pathfinding.js';
@@ -45,22 +46,11 @@ export const CLOSES = freezeDeep([
   { key: 'C_roots', acres: 3, crop: 'bare', phase: 'plant_in_SpringII' },
 ]);
 
+const LIVESTOCK_DEFAULT_WHERE = Object.fromEntries(Object.entries(DEFAULT_LIVESTOCK_LOCATIONS));
+
 export const LIVESTOCK = freezeDeep({
-  horses: 2,
-  oxen: 2,
-  cows: 2,
-  bull: 1,
-  sheep: 36,
-  geese: 16,
-  poultry: 24,
-  where: {
-    sheep: 'clover_hay',
-    horses: 'byre',
-    oxen: 'byre',
-    cows: 'byre',
-    geese: 'orchard',
-    poultry: 'yard',
-  },
+  ...LIVESTOCK_START,
+  where: LIVESTOCK_DEFAULT_WHERE,
 });
 
 const STORE_TEMPLATE = freezeDeep({
@@ -428,15 +418,7 @@ function createParcelFromTemplate(template, index) {
 }
 
 function makeLivestockState() {
-  const where = {
-    horses: 'byre',
-    oxen: 'byre',
-    cows: 'byre',
-    bull: 'byre',
-    sheep: 'clover_hay',
-    geese: 'orchard',
-    poultry: 'yard',
-  };
+  const where = Object.fromEntries(Object.entries(DEFAULT_LIVESTOCK_LOCATIONS));
   return { ...LIVESTOCK_START, where };
 }
 
@@ -469,7 +451,7 @@ export function makeWorld(seed = 12345) {
     storeSheaves: clone(STORE_SHEAVES_TEMPLATE),
     stackReady: false,
     livestock: makeLivestockState(),
-    herdLoc: { sheep: 'clover_hay', geese: 'orchard' },
+    herdLoc: Object.fromEntries(Object.entries(INITIAL_HERD_LOCATIONS)),
     tasks: { month: { queued: [], active: [], done: [], overdue: [] } },
     nextTaskId: 0,
     labour: { usedMin: 0, monthBudgetMin: LABOUR_BUDGET_MIN, crewSlots: CREW_SLOTS },

@@ -1,0 +1,108 @@
+{
+  "animals": [
+    {
+      "id": "horses",
+      "displayName": "Horses",
+      "startingCount": 2,
+      "defaultLocation": "byre",
+      "feed": { "oats_bu": 0.375, "hay_t": 0.006 },
+      "pastureIntake_t": 0,
+      "pastureParcel": null,
+      "pastureReplacesHay": false,
+      "manurePerDay": 1.0,
+      "eggsDozensPerDay": 0,
+      "slaughter": {}
+    },
+    {
+      "id": "oxen",
+      "displayName": "Oxen",
+      "startingCount": 3,
+      "defaultLocation": "byre",
+      "feed": { "oats_bu": 0.1, "hay_t": 0.008 },
+      "pastureIntake_t": 0,
+      "pastureParcel": null,
+      "pastureReplacesHay": false,
+      "manurePerDay": 1.2,
+      "eggsDozensPerDay": 0,
+      "slaughter": {}
+    },
+    {
+      "id": "cows",
+      "displayName": "Cows",
+      "startingCount": 2,
+      "defaultLocation": "byre",
+      "feed": { "oats_bu": 0, "hay_t": 0.01 },
+      "pastureIntake_t": 0,
+      "pastureParcel": null,
+      "pastureReplacesHay": false,
+      "manurePerDay": 1.1,
+      "eggsDozensPerDay": 0,
+      "slaughter": { "meat_salted": 250 }
+    },
+    {
+      "id": "bull",
+      "displayName": "Bull",
+      "startingCount": 1,
+      "defaultLocation": "byre",
+      "feed": { "oats_bu": 0, "hay_t": 0 },
+      "pastureIntake_t": 0,
+      "pastureParcel": null,
+      "pastureReplacesHay": false,
+      "manurePerDay": 0,
+      "eggsDozensPerDay": 0,
+      "slaughter": {}
+    },
+    {
+      "id": "sheep",
+      "displayName": "Sheep",
+      "startingCount": 36,
+      "defaultLocation": "clover_hay",
+      "feed": { "oats_bu": 0, "hay_t": 0.0015 },
+      "pastureIntake_t": 0.0006,
+      "pastureParcel": "clover_hay",
+      "pastureReplacesHay": true,
+      "manurePerDay": 0.2,
+      "eggsDozensPerDay": 0,
+      "slaughter": { "meat_salted": 15 }
+    },
+    {
+      "id": "geese",
+      "displayName": "Geese",
+      "startingCount": 16,
+      "defaultLocation": "orchard",
+      "feed": { "oats_bu": 0.005, "hay_t": 0 },
+      "pastureIntake_t": 0.0002,
+      "pastureParcel": "orchard",
+      "pastureReplacesHay": false,
+      "manurePerDay": 0.05,
+      "eggsDozensPerDay": 0,
+      "slaughter": { "meat_salted": 5 }
+    },
+    {
+      "id": "poultry",
+      "displayName": "Poultry",
+      "startingCount": 24,
+      "defaultLocation": "yard",
+      "feed": { "oats_bu": 0.001, "hay_t": 0 },
+      "pastureIntake_t": 0,
+      "pastureParcel": null,
+      "pastureReplacesHay": false,
+      "manurePerDay": 0.03,
+      "eggsDozensPerDay": 0.0416666667,
+      "slaughter": { "meat_salted": 2 }
+    },
+    {
+      "id": "pig",
+      "displayName": "Pig",
+      "startingCount": 0,
+      "defaultLocation": "sty",
+      "feed": { "oats_bu": 0.003, "hay_t": 0.002 },
+      "pastureIntake_t": 0,
+      "pastureParcel": null,
+      "pastureReplacesHay": false,
+      "manurePerDay": 0.25,
+      "eggsDozensPerDay": 0,
+      "slaughter": { "bacon_sides": 2 }
+    }
+  ]
+}

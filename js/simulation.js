@@ -4,8 +4,6 @@ import {
   WORK_MINUTES,
   TASK_KINDS,
   PASTURE,
-  RATION,
-  MANURE,
   WX_BASE,
   SOIL,
   DEMAND,
@@ -38,6 +36,7 @@ import { rowGrowthMultiplier } from './state.js';
 import { autosave } from './persistence.js';
 import { MINUTES_PER_DAY, computeDaylightByIndex, dayIndex } from './time.js';
 import { generateWeatherToday, dailyWeatherEvents } from './weather.js';
+import { ANIMALS, computeDailyNeedsForAnimal } from './config/animals.js';
 
 export { processFarmerHalfStep } from './tasks.js';
 import { assertNoWorkOutsideWindow } from './tests/invariants.js';
@@ -280,22 +279,36 @@ export function consumeLivestock(world) {
   const H = world.herdLoc;
   if (!S || !L || !H) return;
   world.alerts = [];
-  let pastureT = 0;
-  if (H.sheep === 'clover_hay') {
-    pastureT += grazeIfPresent(world, 'clover_hay', L.sheep, PASTURE.SHEEP_CONS_T_PER_DAY);
+  let pastureDraw_t = 0;
+  let oatsNeed_bu = 0;
+  let hayNeed_t = 0;
+  let manureUnits = 0;
+  let eggsDozens = 0;
+
+  for (const animal of ANIMALS) {
+    const count = Number(L[animal.id]) || 0;
+    if (count <= 0) continue;
+    const herdLocation = H?.[animal.id] ?? L?.where?.[animal.id];
+    const needs = computeDailyNeedsForAnimal(animal, count, herdLocation);
+    oatsNeed_bu += needs.oats_bu;
+    hayNeed_t += needs.hay_t;
+    manureUnits += needs.manureUnits;
+    eggsDozens += needs.eggsDozens;
+    if (needs.pastureIntake_t > 0 && animal.pastureIntake_t > 0) {
+      const parcelKey = animal.pastureParcel || animal.defaultLocation;
+      if (parcelKey) {
+        pastureDraw_t += grazeIfPresent(world, parcelKey, count, animal.pastureIntake_t);
+      }
+    }
   }
-  if (H.geese === 'orchard') {
-    pastureT += grazeIfPresent(world, 'orchard', L.geese, PASTURE.GOOSE_CONS_T_PER_DAY);
-  }
-  const oatsNeed_bu = (L.horses * RATION.HORSE.oats_bu) + (L.oxen * RATION.OX.oats_bu) + (L.geese * RATION.GOOSE.oats_bu) + (L.poultry * RATION.HEN.oats_bu);
+
   const oatsDraw_bu = Math.min(S.oats, oatsNeed_bu);
   S.oats = Math.max(0, S.oats - oatsDraw_bu);
-  const hayNeed_t = (L.horses * RATION.HORSE.hay_t) + (L.oxen * RATION.OX.hay_t) + (L.cows * RATION.COW.hay_t) + (H.sheep === 'clover_hay' ? 0 : L.sheep * RATION.SHEEP.hay_t);
-  const hayDraw_t = Math.min(S.hay, Math.max(0, hayNeed_t - pastureT));
+
+  const hayDraw_t = Math.min(S.hay, Math.max(0, hayNeed_t - pastureDraw_t));
   S.hay = Math.max(0, S.hay - hayDraw_t);
-  const eggsDoz = Math.max(0, Math.round((L.poultry * 0.5) / 12));
+  const eggsDoz = Math.max(0, Math.round(eggsDozens));
   S.eggs_dozen += eggsDoz;
-  const manureUnits = (L.horses * MANURE.HORSE) + (L.oxen * MANURE.OX) + (L.cows * MANURE.COW) + (L.sheep * MANURE.SHEEP) + (L.geese * MANURE.GOOSE) + (L.poultry * MANURE.HEN);
   S.manure_units = (S.manure_units || 0) + manureUnits;
   if (S.oats < 10) world.alerts.push('Oats low');
   if (S.hay < 1) world.alerts.push('Hay low');
