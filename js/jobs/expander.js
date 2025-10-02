@@ -36,7 +36,8 @@ export function expandJob(template, state) {
     ];
   }
 
-  return keys.map((key) => {
+  return keys.map((keyRaw) => {
+    const key = typeof keyRaw === 'string' ? keyRaw : String(keyRaw ?? '');
     const parcel = lookupParcel(world, key);
     const stage = stageNow(parcel, monthIndex);
     const identity = {
@@ -50,7 +51,12 @@ export function expandJob(template, state) {
     const presenceKeys = template.requiresPresenceAt
       ? resolveTargetKeys(template.requiresPresenceAt, world)
       : [];
-    const presence = presenceKeys.find(Boolean) ?? key;
+    const presence = presenceKeys.includes(key)
+      ? key
+      : presenceKeys.find((p) => typeof p === 'string' && p.startsWith('field_'))
+        ?? presenceKeys.find((p) => typeof p === 'string' && p.startsWith('close_'))
+        ?? presenceKeys.find(Boolean)
+        ?? key;
     return {
       ...template,
       target: identity,
