@@ -1,5 +1,6 @@
 import { DAYS_PER_MONTH as TIME_DAYS_PER_MONTH, MONTHS_PER_YEAR as TIME_MONTHS_PER_YEAR, MINUTES_PER_DAY as TIME_MINUTES_PER_DAY, DAYLIGHT } from './time.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
+import { INITIAL_LIVESTOCK_COUNTS, PASTURE_INFO_BY_ID } from './config/animals.js';
 
 const PACK = CONFIG_PACK_V1;
 
@@ -77,20 +78,10 @@ export const THRESH_LOSS = 0.02;
 export const STRAW_PER_BUSHEL = { WHEAT:1.2, BARLEY:1.0, OATS:1.1, PULSES:0.6 };
 export const OPT_MOIST = 0.60;
 
-export const RATION = {
-  HORSE: { oats_bu: 0.375, hay_t: 0.006 },
-  OX: { oats_bu: 0.10,  hay_t: 0.008 },
-  COW: { oats_bu: 0.00, hay_t: 0.010 },
-  SHEEP: { oats_bu: 0.00, hay_t: 0.0015 },
-  GOOSE: { oats_bu: 0.005, hay_t: 0.000 },
-  HEN:   { oats_bu: 0.001, hay_t: 0.000 }
-};
-
-export const MANURE = { HORSE: 1.0, OX: 1.2, COW: 1.1, SHEEP: 0.2, GOOSE: 0.05, HEN: 0.03 };
-
 export const PASTURE = {
-  SHEEP_CONS_T_PER_DAY: 0.0006,
-  GOOSE_CONS_T_PER_DAY: 0.0002,
+  CONSUMPTION_T_PER_DAY: Object.freeze(Object.fromEntries(
+    Object.entries(PASTURE_INFO_BY_ID).map(([id, info]) => [id, info.intake_t])
+  )),
   REGROW_T_PER_ACRE_PER_DAY: 0.0025,
   MIN_BIOMASS_T: 0.0,
   MAX_BIOMASS_T_PER_ACRE: 0.6
@@ -253,12 +244,4 @@ export const CROPS = {
 
 export const ROTATION = [CROPS.TURNIPS, CROPS.BARLEY, CROPS.CLOVER, CROPS.WHEAT];
 
-export const LIVESTOCK_START = {
-  horses: 2,
-  oxen: 3,
-  cows: 2,
-  bull: 1,
-  sheep: 36,
-  geese: 16,
-  poultry: 24
-};
+export const LIVESTOCK_START = Object.freeze({ ...INITIAL_LIVESTOCK_COUNTS });

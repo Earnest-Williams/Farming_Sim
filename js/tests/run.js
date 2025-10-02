@@ -8,6 +8,7 @@ import {
 } from './simulation-clock.test.js';
 import { testSeasonOfMonthAcceptsRomanNumerals } from './constants.test.js';
 import { testDailyTurnMonthRollover } from './simulation-date.test.js';
+import { testAnimalSchema, testAnimalIntegration } from './animals.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -19,6 +20,8 @@ const tests = [
   ['daily turn month rollover preserves labels', testDailyTurnMonthRollover],
   ['one-based month index preserves first month', testOneBasedMonthIndex],
   ['season helper accepts roman numerals', testSeasonOfMonthAcceptsRomanNumerals],
+  ['animal data schema validated', testAnimalSchema],
+  ['animal data drives simulation', testAnimalIntegration],
 ];
 
 let failed = false;

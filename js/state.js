@@ -8,6 +8,7 @@ import {
 import { attachPastureIfNeeded, stamp } from './world.js';
 import { transactAtMarket, ensureMarketState, computeMarketManifest } from './market.js';
 import { operationsToSummary } from './sim/market_exec.js';
+import { SLAUGHTER_OUTPUTS_BY_ID, getAnimalById } from './config/animals.js';
 export { priceFor } from './market.js';
 
 export function applySowPenalty(world, p) {
@@ -310,15 +311,18 @@ function slaughter(world, payload) {
   const sp = payload?.species;
   const n = Math.max(0, payload?.count | 0);
   if (!sp || n <= 0 || !L[sp]) return;
+  if (!getAnimalById(sp)) return;
+  const outputs = SLAUGHTER_OUTPUTS_BY_ID[sp] || {};
   const take = Math.min(L[sp], n);
   L[sp] -= take;
-  switch (sp) {
-    case 'sheep': S.meat_salted += take * 15; break;
-    case 'geese': S.meat_salted += take * 5; break;
-    case 'poultry': S.meat_salted += take * 2; break;
-    case 'cow': S.meat_salted += take * 250; break;
-    case 'pig': S.bacon_sides += take * 2; break;
-    default: break;
+  for (const [key, perHead] of Object.entries(outputs)) {
+    const delta = perHead * take;
+    if (!Number.isFinite(delta) || delta === 0) continue;
+    if (Object.hasOwn(S, key)) {
+      S[key] = (S[key] || 0) + delta;
+    } else {
+      S[key] = delta;
+    }
   }
 }
 

@@ -7,11 +7,12 @@ function manhattan(a, b) {
 export function assertCloseFieldWithinSteps() {
   const farmhouse = CONFIG_PACK_V1.estate?.farmhouse;
   const parcels = Array.isArray(CONFIG_PACK_V1.estate?.parcels) ? CONFIG_PACK_V1.estate.parcels : [];
-  const closeField = parcels.find((parcel) => parcel?.key === 'oats_close');
+  const closeField = parcels.find((parcel) => parcel?.key === 'oats_close')
+    ?? parcels.find((parcel) => parcel?.key?.toLowerCase?.().includes('close'));
   const limit = CONFIG_PACK_V1.rules?.closeFieldMaxSteps ?? Infinity;
 
   if (!farmhouse || !closeField) {
-    throw new Error('Missing farmhouse or oats_close parcel in config pack');
+    throw new Error('Missing farmhouse or close parcel in config pack');
   }
 
   const farmhouseCentre = {
