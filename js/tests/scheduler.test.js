@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { jobsInWindow } from '../scheduler.js';
+import { isEligible, jobsInWindow } from '../scheduler.js';
 import { JOBS } from '../jobs.js';
 
 export function testJobsInWindowHandlesWraparound() {
@@ -10,19 +10,52 @@ export function testJobsInWindowHandlesWraparound() {
 
   JOBS.push(wrapJob);
   try {
-    const includedMonths = ['VIII', 'I', 'II'];
+    const includedMonths = ['VIII', 'IX', 'X', 'XI', 'XII', 'I', 'II'];
     for (const month of includedMonths) {
       const jobs = jobsInWindow(month);
       assert.ok(jobs.some((job) => job.id === wrapJob.id), `${wrapJob.id} should be in window for ${month}`);
     }
 
-    const excludedMonths = ['III', 'IV'];
+    const excludedMonths = ['III', 'IV', 'V', 'VI', 'VII'];
     for (const month of excludedMonths) {
       const jobs = jobsInWindow(month);
       assert.ok(!jobs.some((job) => job.id === wrapJob.id), `${wrapJob.id} should not be in window for ${month}`);
     }
   } finally {
     JOBS.pop();
+  }
+}
+
+export function testIsEligibleHonorsWrappedWindow() {
+  const job = {
+    id: 'wrap_test_job',
+    window: ['VIII', 'II'],
+  };
+
+  const state = {
+    world: {
+      calendar: {
+        month: 'VIII',
+        day: 1,
+        minute: 0,
+      },
+    },
+    progress: {
+      done: new Set(),
+    },
+    guards: {},
+  };
+
+  const eligibleMonths = ['VIII', 'IX', 'X', 'XI', 'XII', 'I', 'II'];
+  for (const month of eligibleMonths) {
+    state.world.calendar.month = month;
+    assert.ok(isEligible(state, job), `Job should be eligible in ${month}`);
+  }
+
+  const blockedMonths = ['III', 'IV', 'V', 'VI', 'VII'];
+  for (const month of blockedMonths) {
+    state.world.calendar.month = month;
+    assert.ok(!isEligible(state, job), `Job should not be eligible in ${month}`);
   }
 }
 
