@@ -165,7 +165,10 @@ export function jobsInWindow(monthLabel) {
     const start = monthIndexFromLabel(job.window?.[0] ?? monthLabel);
     const end = monthIndexFromLabel(job.window?.[1] ?? monthLabel);
     const idx = monthIndexFromLabel(monthLabel);
-    return idx >= start && idx <= end;
+    if (start <= end) {
+      return idx >= start && idx <= end;
+    }
+    return idx >= start || idx <= end;
   });
 }
 
