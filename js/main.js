@@ -133,11 +133,14 @@ function selectDom() {
 function initEvents() {
   if (DOM.menuToggle) {
     DOM.menuToggle.addEventListener('click', () => {
-      const hidden = DOM.drawer.hasAttribute('hidden');
+      const drawer = DOM.drawer;
+      if (!drawer) return;
+
+      const hidden = drawer.hasAttribute('hidden');
       if (hidden) {
-        DOM.drawer.removeAttribute('hidden');
+        drawer.removeAttribute('hidden');
       } else {
-        DOM.drawer.setAttribute('hidden', '');
+        drawer.setAttribute('hidden', '');
       }
       DOM.menuToggle.setAttribute('aria-expanded', hidden ? 'true' : 'false');
     });
@@ -581,5 +584,7 @@ function boot() {
     clock.start();
   }
 }
+
+export { initEvents, DOM };
 
 document.addEventListener('DOMContentLoaded', boot);
