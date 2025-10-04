@@ -19,6 +19,21 @@ function compareMonths(a, b) {
   return monthIndexFromLabel(a) - monthIndexFromLabel(b);
 }
 
+export function monthInWindow(monthIdx, startIdx, endIdx) {
+  if (!Number.isFinite(monthIdx) || !Number.isFinite(startIdx) || !Number.isFinite(endIdx)) {
+    return false;
+  }
+  const totalMonths = CALENDAR.MONTHS.length;
+  const wraps = startIdx > endIdx;
+  const normalizedStart = startIdx;
+  const normalizedEnd = wraps ? endIdx + totalMonths : endIdx;
+  let normalizedMonth = monthIdx;
+  if (wraps && normalizedMonth < startIdx) {
+    normalizedMonth += totalMonths;
+  }
+  return normalizedMonth >= normalizedStart && normalizedMonth <= normalizedEnd;
+}
+
 export function inWindow(state, window) {
   if (!state?.world?.calendar) return false;
   if (!Array.isArray(window) || window.length < 2) return true;
@@ -26,7 +41,7 @@ export function inWindow(state, window) {
   const idx = monthIndexFromLabel(month);
   const start = monthIndexFromLabel(window[0]);
   const end = monthIndexFromLabel(window[1]);
-  return idx >= start && idx <= end;
+  return monthInWindow(idx, start, end);
 }
 
 export function prerequisitesMet(state, job) {
@@ -165,10 +180,7 @@ export function jobsInWindow(monthLabel) {
     const start = monthIndexFromLabel(job.window?.[0] ?? monthLabel);
     const end = monthIndexFromLabel(job.window?.[1] ?? monthLabel);
     const idx = monthIndexFromLabel(monthLabel);
-    if (start <= end) {
-      return idx >= start && idx <= end;
-    }
-    return idx >= start || idx <= end;
+    return monthInWindow(idx, start, end);
   });
 }
 

@@ -8,6 +8,7 @@ import {
   dayIndex,
   syncSimTime,
   SIM,
+  CALENDAR,
 } from './time.js';
 import {
   resetLabour,
@@ -22,6 +23,7 @@ import {
   inWindow,
   prerequisitesMet,
   monthIndexFromLabel,
+  monthInWindow,
 } from './scheduler.js';
 import { initSpeedControls } from './ui/speed.js';
 import { bindClock } from './timeflow.js';
@@ -168,23 +170,31 @@ function updateLabourState() {
   return usage;
 }
 
-function computeJobStatus(job) {
+export function computeJobStatus(job, { state: targetState = state } = {}) {
   if (!job) return 'planned';
-  const engine = state.engine;
-  const calendar = state.world?.calendar ?? {};
+  const engine = targetState.engine;
+  const calendar = targetState.world?.calendar ?? {};
   const currentMonth = calendar.month ?? 1;
   const monthIdx = monthIndexFromLabel(currentMonth);
   const startIdx = monthIndexFromLabel(job.window?.[0] ?? currentMonth);
   const endIdx = monthIndexFromLabel(job.window?.[1] ?? currentMonth);
+  const wraps = startIdx > endIdx;
+  const totalMonths = CALENDAR.MONTHS.length;
+  const normalizedEnd = wraps ? endIdx + totalMonths : endIdx;
+  let normalizedMonth = monthIdx;
+  if (wraps && normalizedMonth < startIdx) {
+    normalizedMonth += totalMonths;
+  }
+  const inCurrentWindow = monthInWindow(monthIdx, startIdx, endIdx);
   const doneSet = engine?.progress?.done instanceof Set ? engine.progress.done : new Set();
   if (doneSet.has(job.id)) return 'completed';
-  if (monthIdx > endIdx) return 'overdue';
+  if (normalizedMonth > normalizedEnd) return 'overdue';
   if (!engine) return 'planned';
-  if (monthIdx < startIdx) return 'planned';
+  if (!wraps && monthIdx < startIdx) return 'planned';
   if (!prerequisitesMet(engine, job)) return 'planned';
   if (!guardAllows(engine, job)) return 'unscheduled';
   if (engine.currentTask?.definition?.id === job.id) return 'working';
-  if (inWindow(engine, job.window)) return 'queued';
+  if (inCurrentWindow || inWindow(engine, job.window)) return 'queued';
   return 'planned';
 }
 

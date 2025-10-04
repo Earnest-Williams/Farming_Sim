@@ -20,7 +20,9 @@ import { testMenuToggleHandlesMissingDrawer } from './ui-menu.test.js';
 import {
   testJobsInWindowHandlesWraparound,
   testJobsInWindowSingleMonthInvariant,
+  testIsEligibleHonorsWrappedWindow,
 } from './scheduler.test.js';
+import { testWrappedJobStatusQueuedAndOverdue } from './main.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -43,6 +45,8 @@ const tests = [
   ['menu toggle tolerates missing drawer', testMenuToggleHandlesMissingDrawer],
   ['jobs window handles wraparound', testJobsInWindowHandlesWraparound],
   ['jobs window single month invariant', testJobsInWindowSingleMonthInvariant],
+  ['isEligible respects wrapped windows', testIsEligibleHonorsWrappedWindow],
+  ['status queued/overdue for wrapped window', testWrappedJobStatusQueuedAndOverdue],
 ];
 
 let failed = false;
