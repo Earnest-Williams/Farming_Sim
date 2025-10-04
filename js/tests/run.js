@@ -17,6 +17,10 @@ import {
   testGardenPlantsPresent,
 } from './plants.test.js';
 import { testMenuToggleHandlesMissingDrawer } from './ui-menu.test.js';
+import {
+  testJobsInWindowHandlesWraparound,
+  testJobsInWindowSingleMonthInvariant,
+} from './scheduler.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -36,6 +40,8 @@ const tests = [
   ['seed and straw helpers consistent', testSeedAndStrawMaps],
   ['garden plants enumerated', testGardenPlantsPresent],
   ['menu toggle tolerates missing drawer', testMenuToggleHandlesMissingDrawer],
+  ['jobs window handles wraparound', testJobsInWindowHandlesWraparound],
+  ['jobs window single month invariant', testJobsInWindowSingleMonthInvariant],
 ];
 
 let failed = false;
