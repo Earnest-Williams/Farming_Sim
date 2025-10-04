@@ -16,6 +16,7 @@ import {
   testSeedAndStrawMaps,
   testGardenPlantsPresent,
 } from './plants.test.js';
+import { testMenuToggleHandlesMissingDrawer } from './ui-menu.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -34,6 +35,7 @@ const tests = [
   ['arable plants provide render assets', testArableRenderAssets],
   ['seed and straw helpers consistent', testSeedAndStrawMaps],
   ['garden plants enumerated', testGardenPlantsPresent],
+  ['menu toggle tolerates missing drawer', testMenuToggleHandlesMissingDrawer],
 ];
 
 let failed = false;
