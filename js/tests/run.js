@@ -7,7 +7,7 @@ import {
   testOneBasedMonthIndex,
 } from './simulation-clock.test.js';
 import { testSeasonOfMonthAcceptsRomanNumerals } from './constants.test.js';
-import { testDailyTurnMonthRollover } from './simulation-date.test.js';
+import { testDailyTurnMonthRollover, testStampNormalizesRomanMonth } from './simulation-date.test.js';
 import { testAnimalSchema, testAnimalIntegration } from './animals.test.js';
 import {
   testPlantSchema,
@@ -30,6 +30,7 @@ const tests = [
   ['world farmer mirrors engine state', testWorldFarmerStateSync],
   ['month rollover boundaries', testMonthRolloverBoundaries],
   ['daily turn month rollover preserves labels', testDailyTurnMonthRollover],
+  ['stamp normalizes roman numeral months', testStampNormalizesRomanMonth],
   ['one-based month index preserves first month', testOneBasedMonthIndex],
   ['season helper accepts roman numerals', testSeasonOfMonthAcceptsRomanNumerals],
   ['animal data schema validated', testAnimalSchema],
