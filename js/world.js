@@ -95,6 +95,21 @@ const STORE_SHEAVES_TEMPLATE = freezeDeep(Object.fromEntries(
 
 const DEFAULT_SOIL = Object.freeze({ moisture: 0.55, nitrogen: 0.6 });
 
+const ROMAN_MONTH_TO_NUMBER = Object.freeze({
+  I: 1,
+  II: 2,
+  III: 3,
+  IV: 4,
+  V: 5,
+  VI: 6,
+  VII: 7,
+  VIII: 8,
+  IX: 9,
+  X: 10,
+  XI: 11,
+  XII: 12,
+});
+
 const PACK_FARMHOUSE = DEFAULT_PACK_V1?.estate?.farmhouse;
 const DEFAULT_FARMHOUSE_CENTER = {
   x: HOUSE.x + Math.floor(HOUSE.w / 2),
@@ -523,7 +538,20 @@ export function attachPastureIfNeeded(parcel) {
 export function stamp(world) {
   const cal = world?.calendar || {};
   const year = Number.isFinite(cal.year) ? cal.year : 1;
-  const month = Number.isFinite(cal.month) ? cal.month : 1;
+  let month;
+  if (Number.isFinite(cal.monthIndex)) {
+    month = cal.monthIndex + 1;
+  } else if (Number.isFinite(cal.month)) {
+    month = cal.month;
+  } else if (typeof cal.month === 'string') {
+    const normalized = cal.month.trim().toUpperCase();
+    month = ROMAN_MONTH_TO_NUMBER[normalized];
+    if (!Number.isFinite(month)) {
+      const parsed = Number.parseInt(normalized, 10);
+      if (Number.isFinite(parsed)) month = parsed;
+    }
+  }
+  if (!Number.isFinite(month)) month = 1;
   const day = Number.isFinite(cal.day) ? cal.day : 1;
   return { y: year, m: month, d: day };
 }

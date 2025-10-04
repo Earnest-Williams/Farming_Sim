@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { createInitialWorld } from '../world.js';
+import { createInitialWorld, stamp } from '../world.js';
 import { dailyTurn } from '../simulation.js';
 import { DAYS_PER_MONTH, MONTH_NAMES } from '../constants.js';
 
@@ -20,4 +20,15 @@ export function testDailyTurnMonthRollover() {
   assert.equal(world.calendar.month, MONTH_NAMES[0], 'month label should match wrapped index');
   assert.equal(world.calendar.year, 4, 'year should increment when month wraps');
   assert.equal(world.daylight.month, MONTH_NAMES[0], 'daylight schedule should align with month label');
+}
+
+export function testStampNormalizesRomanMonth() {
+  const world = createInitialWorld();
+
+  world.calendar.month = 'IV';
+  world.calendar.monthIndex = 3;
+
+  const stamped = stamp(world);
+
+  assert.equal(stamped.m, 4, 'stamp should normalize roman numeral month to one-based index');
 }
