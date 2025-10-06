@@ -68,6 +68,18 @@ export function isEligible(state, job) {
   if (!inWindow(state, job.window)) return false;
   if (!prerequisitesMet(state, job)) return false;
   if (!guardAllows(state, job)) return false;
+  if (state?.taskSkips instanceof Map) {
+    const skip = state.taskSkips.get(job.id);
+    if (skip) {
+      const now = currentSimMinute(state);
+      skip.lastChecked = now;
+      if (Number.isFinite(skip.blockedUntil) && now >= skip.blockedUntil) {
+        state.taskSkips.delete(job.id);
+      } else {
+        return false;
+      }
+    }
+  }
   if (Array.isArray(job.allowedMonths) && job.allowedMonths.length) {
     const month = state?.world?.calendar?.month;
     const idx = monthIndexFromLabel(month) + 1;
