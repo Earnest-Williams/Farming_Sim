@@ -205,9 +205,18 @@ function beginScheduledTask(state) {
       state.currentTask = null;
       return null;
     }
-    const runtime = instantiateJob(state.world, next);
+    let instantiationDetails = null;
+    const runtime = instantiateJob(state.world, next, {
+      onBlocked: (details = {}) => {
+        instantiationDetails = { ...details };
+      },
+    });
     if (!runtime) {
-      recordTaskHistory(state, next);
+      const reason = instantiationDetails?.reason;
+      noteTaskBlocked(state, next, null, {
+        ...instantiationDetails,
+        reason: typeof reason === 'string' && reason.length ? reason : undefined,
+      });
       continue;
     }
     if (typeof runtime.canApply === 'function') {

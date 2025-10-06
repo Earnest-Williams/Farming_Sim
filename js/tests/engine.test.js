@@ -112,3 +112,60 @@ export async function testMarketTripRetryAfterCanApplyFailure() {
   }
 }
 
+export async function testFieldWorkReschedulesAfterParcelAppears() {
+  const originalJobs = JOBS.slice();
+  const fieldJob = originalJobs.find((job) => job.id === 'plough_barley');
+  assert.ok(fieldJob, 'Expected plough job to exist for parcel availability test');
+
+  const world = {
+    calendar: { year: 1, month: 'I', day: 1, minute: 9 * 60 },
+    locations: { yard: { x: 0, y: 0 } },
+    parcels: [],
+    parcelByKey: {},
+    lookup: { parcels: {} },
+    logs: [],
+  };
+
+  const state = createEngineState(world);
+
+  JOBS.splice(0, JOBS.length, fieldJob);
+
+  try {
+    const firstConsumed = tick(state, 1);
+    assert.equal(firstConsumed, 0, 'Blocked field job should not consume labour');
+    assert.equal(state.currentTask, null, 'Missing parcel should prevent task activation');
+
+    const skip = state.taskSkips.get(fieldJob.id);
+    assert.ok(skip, 'Skip metadata should be recorded for missing parcel');
+    assert.ok(/parcel/i.test(skip.reason ?? ''), 'Skip reason should mention missing parcel');
+    assert.ok(!state.progress.done.has(fieldJob.id), 'Field job must remain outstanding');
+    assert.ok(
+      state.world.logs.some((line) => line.includes('Plough barley') && line.includes('waiting')),
+      'World logs should capture blocked field job',
+    );
+
+    const parcel = {
+      key: 'barley_clover',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 4,
+      phase: 'needs_plough',
+      acres: fieldJob.acres ?? 8,
+    };
+    world.parcels = [parcel];
+    world.parcelByKey = { barley_clover: 0 };
+    world.lookup = { parcels: { barley_clover: parcel } };
+
+    state.world.calendar.minute = Math.floor(skip.blockedUntil ?? 0) + 1;
+
+    const secondConsumed = tick(state, 1);
+    assert.ok(Number.isFinite(secondConsumed), 'Tick should return a numeric labour total');
+    assert.ok(state.currentTask, 'Field job should be scheduled once parcel exists');
+    assert.equal(state.currentTask.definition, fieldJob, 'Scheduled task should match field job');
+    assert.ok(!state.taskSkips.has(fieldJob.id), 'Skip metadata should clear after scheduling');
+  } finally {
+    JOBS.splice(0, JOBS.length, ...originalJobs);
+  }
+}
+
