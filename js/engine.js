@@ -7,10 +7,17 @@ import { TASK_META } from './task_meta.js';
 import { applyResourceDeltas } from './resources.js';
 import { DAYS_PER_MONTH, MAX_SCHEDULED_TASK_ATTEMPTS } from './constants.js';
 import { findPath } from './pathfinding.js';
+import { log } from './utils.js';
 
 const STEP_COST_DEFAULT = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5;
 const MINUTES_PER_HOUR = CONFIG_PACK_V1.time.minutesPerHour ?? 60;
 const DAY_SIM_MIN = CONFIG_PACK_V1.time.daySimMin ?? 24 * 60;
+const DEFAULT_SKIP_RETRY_MIN = Math.max(
+  5,
+  Number.isFinite(CONFIG_PACK_V1.rules?.taskRetryCooldownSimMin)
+    ? CONFIG_PACK_V1.rules.taskRetryCooldownSimMin
+    : MINUTES_PER_HOUR || 60,
+);
 
 function currentSimMinute(world) {
   if (!world?.calendar) return 0;
@@ -30,6 +37,9 @@ function ensureProgressStructures(state) {
     state.progress.done.clear();
     state.progress.history.clear();
     state.progress.year = year;
+    if (state.taskSkips instanceof Map) {
+      state.taskSkips.clear();
+    }
   }
 }
 
@@ -132,6 +142,62 @@ function recordTaskHistory(state, job) {
   progress.history.set(job.id, { year, month });
 }
 
+function ensureTaskSkips(state) {
+  if (!(state.taskSkips instanceof Map)) {
+    state.taskSkips = new Map();
+  }
+  return state.taskSkips;
+}
+
+function describeJobForLog(job, runtime) {
+  return (
+    runtime?.label
+    ?? job?.label
+    ?? job?.operation
+    ?? job?.kind
+    ?? job?.id
+    ?? 'task'
+  );
+}
+
+function noteTaskBlocked(state, job, runtime, details = {}) {
+  if (!job?.id) return;
+  const skips = ensureTaskSkips(state);
+  const now = currentSimMinute(state.world);
+  const retryIn = Number.isFinite(details.retryIn)
+    ? details.retryIn
+    : Number.isFinite(details.retryAt)
+      ? Math.max(0, details.retryAt - now)
+      : Number.isFinite(runtime?.retryCooldownMin)
+        ? runtime.retryCooldownMin
+        : Number.isFinite(job?.retryCooldownMin)
+          ? job.retryCooldownMin
+          : DEFAULT_SKIP_RETRY_MIN;
+  const blockedUntil = now + Math.max(1, retryIn);
+  const reason = String(
+    details.reason
+    ?? runtime?.manifestReason
+    ?? runtime?.blockReason
+    ?? job?.blockReason
+    ?? 'requirements not met',
+  );
+  const existing = skips.get(job.id);
+  const entry = {
+    blockedUntil,
+    reason,
+    lastChecked: now,
+    logNotified: existing?.logNotified ?? false,
+  };
+  if (Array.isArray(state.world?.logs) && (!existing || existing.reason !== reason || !existing.logNotified)) {
+    const label = describeJobForLog(job, runtime);
+    log(state.world, `⏸️ ${label} waiting: ${reason}`);
+    entry.logNotified = true;
+  } else if (existing) {
+    entry.logNotified = existing.logNotified;
+  }
+  skips.set(job.id, entry);
+}
+
 function beginScheduledTask(state) {
   for (let attempts = 0; attempts < MAX_SCHEDULED_TASK_ATTEMPTS; attempts += 1) {
     const next = pickNextTask(state);
@@ -144,15 +210,23 @@ function beginScheduledTask(state) {
       recordTaskHistory(state, next);
       continue;
     }
-    if (typeof runtime.canApply === 'function' && !runtime.canApply(state.world)) {
-      recordTaskHistory(state, next);
-      continue;
+    if (typeof runtime.canApply === 'function') {
+      const result = runtime.canApply(state.world);
+      const ok = typeof result === 'object' ? !!result.ok : !!result;
+      if (!ok) {
+        const details = typeof result === 'object' ? result : {};
+        noteTaskBlocked(state, next, runtime, details);
+        continue;
+      }
     }
     const totalSimMin = simMinutesForHours(runtime.hours);
     if (!Number.isFinite(totalSimMin) || totalSimMin <= 0) {
       applyJobCompletion(state.world, runtime);
       recordTaskHistory(state, next);
       continue;
+    }
+    if (state.taskSkips instanceof Map) {
+      state.taskSkips.delete(next.id);
     }
     const target = runtime.target || state.world?.locations?.yard || { x: 0, y: 0 };
     state.currentTask = {
@@ -335,6 +409,9 @@ function completeTask(state, task) {
     const readyAt = currentSimMinute(state.world) + def.cooldownMin;
     state.taskCooldowns.set(def.id, readyAt);
   }
+  if (state.taskSkips instanceof Map && def.id) {
+    state.taskSkips.delete(def.id);
+  }
   const farmer = ensureFarmer(state);
   if (task.target) {
     farmer.pos.x = Math.round(task.target.x ?? farmer.pos.x);
@@ -366,6 +443,7 @@ export function createEngineState(world) {
     stepCost: STEP_COST_DEFAULT,
     labour: { totalSimMin: 0, travelSimMin: 0, workSimMin: 0 },
     taskCooldowns: new Map(),
+    taskSkips: new Map(),
   };
 }
 
@@ -374,6 +452,7 @@ export function tick(state, simMin) {
   ensureProgressStructures(state);
   ensureGuards(state);
   ensureFarmer(state);
+  ensureTaskSkips(state);
   let remaining = simMin;
   let consumed = 0;
   while (remaining > 0) {

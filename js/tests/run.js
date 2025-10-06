@@ -23,6 +23,7 @@ import {
   testIsEligibleHonorsWrappedWindow,
 } from './scheduler.test.js';
 import { testWrappedJobStatusQueuedAndOverdue } from './main.test.js';
+import { testMarketTripRetryAfterCanApplyFailure } from './engine.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -47,6 +48,7 @@ const tests = [
   ['jobs window single month invariant', testJobsInWindowSingleMonthInvariant],
   ['isEligible respects wrapped windows', testIsEligibleHonorsWrappedWindow],
   ['status queued/overdue for wrapped window', testWrappedJobStatusQueuedAndOverdue],
+  ['market trip retries after canApply failure', testMarketTripRetryAfterCanApplyFailure],
 ];
 
 let failed = false;
