@@ -59,3 +59,49 @@ export async function testWrappedJobStatusQueuedAndOverdue() {
     }
   }
 }
+
+export async function testSkippedJobStatusReported() {
+  const previousDocument = global.document;
+  global.document = { addEventListener: () => {} };
+
+  try {
+    const { computeJobStatus } = await import('../main.js');
+
+    const job = {
+      id: 'skip_status_job',
+      window: ['I', 'I'],
+    };
+
+    const testState = {
+      world: {
+        calendar: {
+          month: 'I',
+          day: 1,
+          minute: 0,
+        },
+      },
+      engine: {
+        world: {
+          calendar: {
+            month: 'I',
+            day: 1,
+            minute: 0,
+          },
+        },
+        progress: {
+          done: new Set(),
+        },
+        taskSkips: new Map([[job.id, { reason: 'waiting for target' }]]),
+      },
+    };
+
+    const status = computeJobStatus(job, { state: testState });
+    assert.equal(status, 'skipped', 'Skipped jobs should report skipped status');
+  } finally {
+    if (previousDocument === undefined) {
+      delete global.document;
+    } else {
+      global.document = previousDocument;
+    }
+  }
+}

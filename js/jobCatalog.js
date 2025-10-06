@@ -63,12 +63,27 @@ function ensureJobHours(jobDef, job) {
   return 0;
 }
 
-export function instantiateJob(world, jobDef) {
-  if (!world || !jobDef) return null;
+function notifyBlocked(onBlocked, details = {}) {
+  if (typeof onBlocked === 'function') {
+    onBlocked({ ...details });
+  }
+}
+
+export function instantiateJob(world, jobDef, options = {}) {
+  const { onBlocked } = options;
+  if (!world || !jobDef) {
+    notifyBlocked(onBlocked, { reason: 'missing job definition or world state' });
+    return null;
+  }
   switch (jobDef.kind) {
     case 'plough': {
       const field = findField(world, jobDef.field);
-      if (!field) return null;
+      if (!field) {
+        notifyBlocked(onBlocked, {
+          reason: `target parcel unavailable: ${jobDef.field ?? 'field'}`,
+        });
+        return null;
+      }
       const job = plough(field);
       const hours = ensureJobHours(jobDef, job);
       return {
@@ -81,7 +96,12 @@ export function instantiateJob(world, jobDef) {
     }
     case 'harrow': {
       const field = findField(world, jobDef.field);
-      if (!field) return null;
+      if (!field) {
+        notifyBlocked(onBlocked, {
+          reason: `target parcel unavailable: ${jobDef.field ?? 'field'}`,
+        });
+        return null;
+      }
       const job = harrow(field);
       const hours = ensureJobHours(jobDef, job);
       return {
@@ -94,7 +114,12 @@ export function instantiateJob(world, jobDef) {
     }
     case 'sow': {
       const field = findField(world, jobDef.field);
-      if (!field) return null;
+      if (!field) {
+        notifyBlocked(onBlocked, {
+          reason: `target parcel unavailable: ${jobDef.field ?? 'field'}`,
+        });
+        return null;
+      }
       const job = sow(field, jobDef.crop);
       const hours = ensureJobHours(jobDef, job);
       return {
@@ -130,7 +155,12 @@ export function instantiateJob(world, jobDef) {
     }
     case 'market': {
       const gate = canScheduleMarketTrip(world, jobDef.request ?? {});
-      if (!gate.ok || !(gate.manifest?.length)) return null;
+      if (!gate.ok || !(gate.manifest?.length)) {
+        notifyBlocked(onBlocked, {
+          reason: gate.reason ?? 'market trip prerequisites unmet',
+        });
+        return null;
+      }
       const job = cartToMarket();
       const hours = ensureJobHours(jobDef, job);
       const baseLabel = jobDef.label ?? job.operation ?? job.kind;

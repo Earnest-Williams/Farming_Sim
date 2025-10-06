@@ -22,8 +22,8 @@ import {
   testJobsInWindowSingleMonthInvariant,
   testIsEligibleHonorsWrappedWindow,
 } from './scheduler.test.js';
-import { testWrappedJobStatusQueuedAndOverdue } from './main.test.js';
-import { testMarketTripRetryAfterCanApplyFailure } from './engine.test.js';
+import { testWrappedJobStatusQueuedAndOverdue, testSkippedJobStatusReported } from './main.test.js';
+import { testMarketTripRetryAfterCanApplyFailure, testFieldWorkReschedulesAfterParcelAppears } from './engine.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -48,7 +48,9 @@ const tests = [
   ['jobs window single month invariant', testJobsInWindowSingleMonthInvariant],
   ['isEligible respects wrapped windows', testIsEligibleHonorsWrappedWindow],
   ['status queued/overdue for wrapped window', testWrappedJobStatusQueuedAndOverdue],
+  ['skipped job status reported', testSkippedJobStatusReported],
   ['market trip retries after canApply failure', testMarketTripRetryAfterCanApplyFailure],
+  ['field work reschedules after parcel appears', testFieldWorkReschedulesAfterParcelAppears],
 ];
 
 let failed = false;

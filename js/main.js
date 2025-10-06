@@ -188,6 +188,9 @@ export function computeJobStatus(job, { state: targetState = state } = {}) {
   const inCurrentWindow = monthInWindow(monthIdx, startIdx, endIdx);
   const doneSet = engine?.progress?.done instanceof Set ? engine.progress.done : new Set();
   if (doneSet.has(job.id)) return 'completed';
+  if (engine?.taskSkips instanceof Map && engine.taskSkips.has(job.id)) {
+    return 'skipped';
+  }
   if (normalizedMonth > normalizedEnd) return 'overdue';
   if (!engine) return 'planned';
   if (!wraps && monthIdx < startIdx) return 'planned';
