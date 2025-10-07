@@ -63,10 +63,53 @@ body {
 #sim-hud .hud-line span {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
-  border-radius: 6px;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
   background: rgba(148, 163, 184, 0.12);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 28%, transparent) 0%,
+    color-mix(in srgb, var(--panel) 75%, transparent) 100%
+  );
   color: var(--fg);
+  -webkit-backdrop-filter: blur(6px) saturate(130%);
+  backdrop-filter: blur(6px) saturate(130%);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--border) 55%, transparent);
+  transition: transform 180ms ease, filter 180ms ease, box-shadow 200ms ease,
+    background 220ms ease;
+}
+
+#sim-hud .hud-line span:hover,
+#sim-hud .hud-line span:focus-visible {
+  transform: translateY(-1px) scale(1.015);
+  filter: brightness(1.05);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--border) 65%, transparent);
+}
+
+#hud-date::before,
+#hud-time::before,
+#hud-labour::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25em;
+  margin-right: 0.4em;
+  font-size: 1.05em;
+  color: color-mix(in srgb, var(--accent) 75%, var(--fg) 25%);
+  flex-shrink: 0;
+}
+
+#hud-date::before {
+  content: "📅";
+}
+
+#hud-time::before {
+  content: "⏱️";
+}
+
+#hud-labour::before {
+  content: "🧑‍🌾";
 }
 
 .header-actions {
