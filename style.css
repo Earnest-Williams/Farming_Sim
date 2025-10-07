@@ -167,6 +167,73 @@ button:focus-visible {
   overflow: hidden;
 }
 
+#screen-container::before {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  z-index: 0;
+  background: radial-gradient(
+      60% 80% at 20% 30%,
+      color-mix(in srgb, var(--accent) 25%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--panel) 60%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 18%, transparent) 50%,
+      color-mix(in srgb, var(--border) 75%, transparent) 100%
+    );
+  filter: blur(18px);
+  opacity: 0.85;
+  animation: screen-ambient 22s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+#screen-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes screen-ambient {
+  0% {
+    transform: translate3d(-6%, -4%, 0) scale(1.05) rotate(0deg);
+    opacity: 0.75;
+    filter: blur(18px);
+  }
+
+  50% {
+    transform: translate3d(4%, 6%, 0) scale(1.02) rotate(3deg);
+    opacity: 0.9;
+    filter: blur(20px);
+  }
+
+  100% {
+    transform: translate3d(8%, -2%, 0) scale(1.08) rotate(-4deg);
+    opacity: 0.78;
+    filter: blur(19px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #screen-container::before {
+    animation: none;
+    transform: none;
+    opacity: 0.82;
+    filter: blur(18px);
+    background: radial-gradient(
+        70% 90% at 25% 35%,
+        color-mix(in srgb, var(--accent) 20%, transparent),
+        transparent 72%
+      ),
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--panel) 60%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 12%, transparent) 55%,
+        color-mix(in srgb, var(--border) 72%, transparent) 100%
+      );
+  }
+}
+
 #screen {
   flex: 1;
   margin: 0;
