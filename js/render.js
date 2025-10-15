@@ -143,6 +143,7 @@ export function renderColored(world, debugState = {}) {
       putStyled(buf, styleBuf, x, y, GRASS_GLYPHS[sid] || '.', sid);
     }
   }
+  drawRiverAndRoad(buf, styleBuf, camX, camY, world);
   for (const p of world.parcels) {
     if (!p.rows.length) continue;
     const organic = clamp(p.soil?.organic ?? 0.6, 0, 1);
@@ -169,31 +170,52 @@ export function renderColored(world, debugState = {}) {
   const houseSX = HOUSE.x - camX;
   const houseSY = HOUSE.y - camY;
   if (houseSX + HOUSE.w >= 0 && houseSX <= SCREEN_W && houseSY + HOUSE.h >= 0 && houseSY <= SCREEN_H) {
-    for (let y = houseSY + 1; y < houseSY + HOUSE.h - 1; y++) {
-      for (let x = houseSX + 1; x < houseSX + HOUSE.w - 1; x++) {
-        putStyled(buf, styleBuf, x, y, '=', SID.WOOD_FLOOR);
+    const roofHeight = Math.max(2, Math.floor(HOUSE.h / 3));
+    const bodyTop = houseSY + roofHeight;
+    const bodyBottom = houseSY + HOUSE.h - 1;
+    const doorWidth = 2;
+    const doorStart = houseSX + Math.floor((HOUSE.w - doorWidth) / 2);
+    const windowRow = bodyTop + Math.max(1, Math.floor((HOUSE.h - roofHeight) / 3));
+    const windowOffsets = [2, HOUSE.w - 3];
+
+    for (let ry = 0; ry < roofHeight; ry++) {
+      const inset = roofHeight - ry - 1;
+      const y = houseSY + ry;
+      for (let x = 0; x < HOUSE.w; x++) {
+        if (x < inset || x >= HOUSE.w - inset) continue;
+        const sx = houseSX + x;
+        const ch = (x === inset ? '/' : x === HOUSE.w - inset - 1 ? '\\' : '^');
+        putStyled(buf, styleBuf, sx, y, ch, SID.HOUSE_WALL);
       }
     }
-    for (let i = 1; i < HOUSE.w - 1; i++) {
-      putStyled(buf, styleBuf, houseSX + i, houseSY, '-', SID.BORDER);
-      putStyled(buf, styleBuf, houseSX + i, houseSY + HOUSE.h - 1, '-', SID.BORDER);
+
+    for (let y = bodyTop; y <= bodyBottom; y++) {
+      for (let x = 0; x < HOUSE.w; x++) {
+        const sx = houseSX + x;
+        if (sx < 0 || sx >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
+        const isLeftWall = x === 0;
+        const isRightWall = x === HOUSE.w - 1;
+        const isTopBeam = y === bodyTop;
+        const isBottomBeam = y === bodyBottom;
+        const isDoor = sx >= doorStart && sx < doorStart + doorWidth;
+        let ch = '#';
+        let sid = SID.HOUSE_WALL;
+        if (isTopBeam) {
+          ch = isLeftWall || isRightWall ? '+' : '=';
+        } else if (isBottomBeam) {
+          ch = isDoor ? ' ' : '_';
+          sid = isDoor ? SID.DOOR : SID.HOUSE_WALL;
+        } else if (isLeftWall || isRightWall) {
+          ch = '|';
+        } else if (y === windowRow && windowOffsets.includes(x)) {
+          ch = 'O';
+        } else if (isDoor && y === bodyBottom - 1) {
+          ch = '|';
+          sid = SID.DOOR;
+        }
+        putStyled(buf, styleBuf, sx, y, ch, sid);
+      }
     }
-    for (let i = 1; i < HOUSE.h - 1; i++) {
-      putStyled(buf, styleBuf, houseSX, houseSY + i, '|', SID.BORDER);
-      putStyled(buf, styleBuf, houseSX + HOUSE.w - 1, houseSY + i, '|', SID.BORDER);
-    }
-    putStyled(buf, styleBuf, houseSX, houseSY, '+', SID.BORDER);
-    putStyled(buf, styleBuf, houseSX + HOUSE.w - 1, houseSY, '+', SID.BORDER);
-    putStyled(buf, styleBuf, houseSX, houseSY + HOUSE.h - 1, '+', SID.BORDER);
-    putStyled(buf, styleBuf, houseSX + HOUSE.w - 1, houseSY + HOUSE.h - 1, '+', SID.BORDER);
-    const midx = houseSX + Math.floor(HOUSE.w / 2);
-    for (let i = 1; i < HOUSE.h - 1; i++) putStyled(buf, styleBuf, houseSX + 6, houseSY + i, '|', SID.HOUSE_WALL);
-    putStyled(buf, styleBuf, midx, houseSY + HOUSE.h - 1, ' ', SID.DOOR);
-    putStyled(buf, styleBuf, midx - 1, houseSY + HOUSE.h - 1, ' ', SID.DOOR);
-    putStyled(buf, styleBuf, midx - 2, houseSY + HOUSE.h - 1, '-', SID.DOOR);
-    putStyled(buf, styleBuf, midx + 1, houseSY + HOUSE.h - 1, '-', SID.DOOR);
-    label(buf, styleBuf, houseSX + 1, houseSY + 1, 'Bed', SID.HOUSE_WALL);
-    label(buf, styleBuf, houseSX + 8, houseSY + 1, 'Living', SID.HOUSE_WALL);
   }
   const byreSX = BYRE.x - camX;
   const byreSY = BYRE.y - camY;
@@ -313,6 +335,37 @@ function drawFarmer(buf, styleBuf, world, camX, camY) {
     const labelX = Math.min(SCREEN_W - 1, Math.max(0, px + 1));
     const labelY = Math.max(0, py - 1);
     label(buf, styleBuf, labelX, labelY, farmer.task, SID.HUD_TEXT);
+  }
+}
+
+function drawRiverAndRoad(buf, styleBuf, camX, camY, world) {
+  const baseX = 90;
+  const riverHalfWidth = 3;
+  const roadOffset = 6;
+  const roadHalfWidth = 1;
+  for (let sy = 0; sy < SCREEN_H; sy++) {
+    const worldY = sy + camY;
+    if (worldY < 0 || worldY >= CONFIG.WORLD.H) continue;
+    const t = worldY / CONFIG.WORLD.H;
+    const meander = Math.sin(t * Math.PI * 2 + world.seed * 0.01) * 18;
+    const gentle = Math.sin(t * Math.PI * 0.75 + world.seed * 0.02) * 6;
+    const centerX = Math.round(baseX + meander + gentle);
+
+    for (let dx = -riverHalfWidth; dx <= riverHalfWidth; dx++) {
+      const worldX = centerX + dx;
+      const sx = worldX - camX;
+      if (sx < 0 || sx >= SCREEN_W) continue;
+      const ch = '~';
+      putStyled(buf, styleBuf, sx, sy, ch, SID.RIVER);
+    }
+
+    const roadCenter = centerX + roadOffset;
+    for (let dx = -roadHalfWidth; dx <= roadHalfWidth; dx++) {
+      const worldX = roadCenter + dx;
+      const sx = worldX - camX;
+      if (sx < 0 || sx >= SCREEN_W) continue;
+      putStyled(buf, styleBuf, sx, sy, '=', SID.ROAD);
+    }
   }
 }
 

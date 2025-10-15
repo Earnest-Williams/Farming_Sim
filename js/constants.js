@@ -155,10 +155,10 @@ export const TASK_KINDS = {
 
 export const CONFIG = {
   SCREEN: { W: 100, H: 30 },
-  WORLD:  { W: 210, H: 100 },
-  HOUSE: { x: 15, y: 10, w: 16, h: 8 },
-  BYRE: { x: 30, y: 14, w: 8, h: 5 },
-  WELL: { x: 35, y: 12 },
+  WORLD:  { W: 480, H: 340 },
+  HOUSE: { x: 230, y: 200, w: 20, h: 12 },
+  BYRE: { x: 260, y: 200, w: 12, h: 8 },
+  WELL: { x: 242, y: 195 },
   FARMER_SPEED: 2,
   SPEED_LEVELS: [1000, 600, 300, 150, 75],
   IRRIGATION_THRESHOLD: 0.35,
@@ -211,6 +211,8 @@ export const SID = {
   HUD_TEXT: 100, W_RAIN: 101, W_STORM: 102, W_HOT: 103, W_SNOW: 104,
   BAR_LOW: 110, BAR_MID: 111, BAR_HIGH: 112, N_LOW: 113, N_MID: 114, N_HIGH: 115,
   MIXED_LABEL: 200,
+  RIVER: 201,
+  ROAD: 202,
 };
 
 export const SID_BY_CROP = STAGE_SIDS_BY_KEY;
