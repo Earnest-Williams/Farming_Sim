@@ -54,6 +54,16 @@ const WINNOWABLE_STORE_KEYS = WINNOWABLE_PLANTS
 const GARDEN_PLANT_IDS = Object.freeze(GARDEN_PLANTS.map((plant) => plant.id));
 const OATS_STORE_KEY = PRIMARY_YIELD_STORE_KEY_BY_ID.OATS ?? 'oats';
 
+const FROST_SENSITIVE_TYPES = new Set(['pulse', 'root', 'garden']);
+const FROST_SENSITIVE_IDS = new Set(['TURNIPS', 'PULSES', 'FLAX']);
+
+function isFrostSensitiveCrop(crop) {
+  if (!crop) return false;
+  if (FROST_SENSITIVE_IDS.has(crop.id)) return true;
+  if (crop.type && FROST_SENSITIVE_TYPES.has(crop.type)) return true;
+  return false;
+}
+
 function clampMonthIndexValue(idx) {
   if (!Number.isFinite(idx)) return 0;
   return clamp(Math.floor(idx), 0, MONTHS_PER_YEAR - 1);
@@ -333,6 +343,9 @@ export function updateSoilWaterDaily(world) {
   const monthNumber = resolveMonthIndex(world.calendar) + 1;
   const wx = WX_BASE[monthNumber] || WX_BASE[1];
   const etp = wx?.etp ?? 0;
+  const dryness = W.dryStreakDays || 0;
+  const heavyRain = rain >= 6;
+  const soddenRain = rain >= 10;
   for (const p of world.parcels) {
     let m = p.soil.moisture;
     const hasCanopy = p.rows?.some(r => r.crop && (r.growth || 0) > 0.15);
@@ -340,10 +353,47 @@ export function updateSoilWaterDaily(world) {
     m += infil;
     const evap = etp * 0.02 * (hasCanopy ? 1.0 : 0.6);
     m -= evap;
+    if (dryness >= 3 && !heavyRain) {
+      const droughtDraw = 0.01 * (dryness - 2);
+      m = Math.max(m - droughtDraw, SOIL.WILTING * 0.85);
+    }
     if (m > SOIL.FIELD_CAP) m -= SOIL.DRAIN_RATE * (m - SOIL.FIELD_CAP);
     m = Math.max(0, Math.min(SOIL.SAT, m));
     p.soil.moisture = m;
     p.status.mud = moistureToMud(m);
+
+    const priorDry = clamp01(p.status.droughtStress || 0);
+    const priorWet = clamp01(p.status.waterlogging || 0);
+    let droughtStress = priorDry;
+    if (dryness >= 3 && rain < 0.4) {
+      droughtStress = clamp01(droughtStress + 0.08 + 0.04 * (dryness - 3));
+    } else {
+      droughtStress = clamp01(droughtStress - 0.10);
+    }
+    let waterlogging = priorWet;
+    if (heavyRain) {
+      const intensity = clamp01((rain - 4) / 10);
+      waterlogging = clamp01(waterlogging + 0.18 + 0.22 * intensity);
+    } else {
+      waterlogging = clamp01(waterlogging - 0.12);
+    }
+
+    p.status.droughtStress = droughtStress;
+    p.status.waterlogging = waterlogging;
+
+    if (soddenRain && waterlogging > 0.55 && !p.status._waterWarned) {
+      world.alerts.push(`${p.name} is waterlogged after the storm.`);
+      p.status._waterWarned = true;
+    } else if (!soddenRain && waterlogging < 0.35) {
+      p.status._waterWarned = false;
+    }
+
+    if (droughtStress > 0.65 && !p.status._droughtWarned) {
+      world.alerts.push(`${p.name} soil is turning to dust.`);
+      p.status._droughtWarned = true;
+    } else if (droughtStress < 0.35) {
+      p.status._droughtWarned = false;
+    }
   }
 }
 
@@ -381,7 +431,14 @@ export function dailyTurn(world) {
     if (world.weather.label === 'Hot') sf *= 0.85;
     if (world.weather.label === 'Snow') sf *= 0.85;
     if (world.weather.label === 'Rain' || world.weather.label === 'Storm') sf *= 1.05;
+    if (world.weather.label === 'Drought') sf *= 0.88;
+    const drought = clamp01(p.status.droughtStress || 0);
+    const flood = clamp01(p.status.waterlogging || 0);
+    const droughtFactor = clamp(1 - drought * 0.55, 0.35, 1);
+    const floodFactor = clamp(1 - flood * 0.5, 0.4, 1);
+    const stressFactor = droughtFactor * floodFactor;
     let sumNUse = 0;
+    const frostTonight = !!world.weather.frostTonight;
     for (const row of p.rows) {
       row.moisture = lerp(row.moisture, p.soil.moisture, 0.5);
       row.weed = clamp01((row.weed || 0) + 0.002);
@@ -389,7 +446,16 @@ export function dailyTurn(world) {
       if (crop) {
         sumNUse += crop.nUse;
         const baseRate = 1 / (crop.baseDays * (world.daylight.dayLenHours * 60));
-        row.growth = clamp01(row.growth + baseRate * MINUTES_PER_DAY * sf * rowGrowthMultiplier(p, row, crop));
+        const multiplier = rowGrowthMultiplier(p, row, crop);
+        const delta = baseRate * MINUTES_PER_DAY * sf * stressFactor * multiplier;
+        row.growth = clamp01(row.growth + delta);
+        if (frostTonight && isFrostSensitiveCrop(crop) && row.growth > 0.18) {
+          const frostLoss = (crop.type === 'pulse' ? 0.03 : 0.02) * (1 + drought * 0.6);
+          row.growth = clamp01(row.growth - frostLoss);
+          row.frostScorch = clamp01((row.frostScorch || 0) + 0.35);
+        } else if (row.frostScorch) {
+          row.frostScorch = clamp01(row.frostScorch * 0.75);
+        }
       }
     }
     const baseRecover = 0.003 * Math.max(0, 1 - p.soil.nitrogen);

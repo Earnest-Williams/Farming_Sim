@@ -16,6 +16,7 @@
           <span id="hud-time">00:00</span>
         </div>
         <div class="hud-line">
+          <span id="hud-weather">Weather: Fair · 10°C</span>
           <span id="hud-labour">Labour: 0 / 640 h</span>
         </div>
       </div>
@@ -29,6 +30,15 @@
         <div id="screen-container">
           <pre id="screen" role="region" aria-live="polite" aria-label="ASCII farm world" aria-keyshortcuts="Space , . N 1 2 3 4 5 C R Shift+R P H Shift+H Shift+L Alt+L" tabindex="0"></pre>
           <canvas id="debug-overlay"></canvas>
+          <div id="atmosphere-overlay" aria-hidden="true">
+            <div class="weather-chip" role="presentation">
+              <span class="weather-icon" id="weather-icon" aria-hidden="true">☀️</span>
+              <div class="weather-meta">
+                <span class="weather-label" id="weather-label">Fair</span>
+                <span class="weather-details" id="weather-details">10°C • 0.0 mm</span>
+              </div>
+            </div>
+          </div>
           <div id="message-stack" role="status" aria-live="polite"></div>
         </div>
       </div>

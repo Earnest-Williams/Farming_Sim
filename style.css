@@ -161,10 +161,27 @@ button:focus-visible {
   width: 100%;
   height: 100%;
   max-width: none;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  --sky-hue: 210;
+  --sky-saturation: 0.55;
+  --sky-brightness: 0.62;
+  --sky-cloud: 0.28;
+  --sun-glow: 0.4;
+  background: linear-gradient(
+      180deg,
+      hsl(calc(var(--sky-hue) * 1deg) calc(var(--sky-saturation) * 100%)
+        calc(22% + (var(--sky-brightness) * 38%))) 0%,
+      hsl(calc(var(--sky-hue) * 1deg) calc(var(--sky-saturation) * 100%)
+        calc(11% + (var(--sky-brightness) * 26%))) 60%,
+      color-mix(in srgb, #04070b 82%, transparent) 100%
+    );
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 12px;
   overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.45),
+    0 28px 55px rgba(2, 6, 12, 0.55);
+  transition: background 0.8s ease, box-shadow 0.8s ease,
+    border-color 0.6s ease;
 }
 
 #screen-container::before {
@@ -187,6 +204,29 @@ button:focus-visible {
   opacity: 0.85;
   animation: screen-ambient 22s ease-in-out infinite alternate;
   pointer-events: none;
+}
+
+#screen-container::after {
+  content: "";
+  position: absolute;
+  inset: -6% -12% -12% -12%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      85% 60% at 18% 18%,
+      rgba(255, 220, 160, calc(var(--sun-glow) * 0.55)),
+      transparent 70%
+    ),
+    radial-gradient(
+      120% 85% at 60% -10%,
+      rgba(162, 186, 215, calc(var(--sky-cloud) * 0.28)),
+      transparent 70%
+    );
+  mix-blend-mode: screen;
+  opacity: clamp(0.25, 0.32 + (var(--sky-brightness) * 0.6), 0.92);
+  filter: blur(14px);
+  transition: opacity 0.8s ease, filter 0.8s ease;
 }
 
 #screen-container > * {
@@ -244,6 +284,79 @@ button:focus-visible {
   overflow: auto;
   min-height: 0;
   box-sizing: border-box;
+  background: color-mix(in srgb, rgba(7, 11, 18, 0.9) 78%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(2.5px) saturate(120%);
+  border-radius: 12px;
+}
+
+.screen-row {
+  line-height: 1.04;
+  letter-spacing: 0.02em;
+}
+
+#atmosphere-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 18px 22px;
+  gap: 12px;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    180deg,
+    rgba(9, 12, 20, calc(var(--sky-cloud) * 0.25)) 0%,
+    transparent 42%
+  );
+  mix-blend-mode: plus-lighter;
+}
+
+.weather-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, rgba(15, 23, 42, 0.78) 70%, transparent);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 14px 28px rgba(8, 11, 18, 0.45);
+  backdrop-filter: blur(12px) saturate(135%);
+  pointer-events: none;
+  transform: translateY(0);
+  transition: transform 160ms ease;
+}
+
+#screen-container:hover .weather-chip {
+  transform: translateY(-2px);
+}
+
+.weather-icon {
+  font-size: 26px;
+  filter: drop-shadow(0 4px 8px rgba(249, 250, 255, 0.25));
+}
+
+.weather-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  font-size: 12px;
+  text-align: right;
+}
+
+.weather-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--fg) 90%, white 10%);
+}
+
+.weather-details {
+  color: color-mix(in srgb, var(--dim) 85%, white 15%);
+  font-size: 12px;
 }
 
 #debug-overlay {
