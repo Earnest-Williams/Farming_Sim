@@ -27,7 +27,7 @@ import {
 } from './scheduler.js';
 import { initSpeedControls } from './ui/speed.js';
 import { bindClock } from './timeflow.js';
-import { PARCEL_KIND, CONFIG } from './constants.js';
+import { PARCEL_KIND, CONFIG, MINUTES_PER_DAY } from './constants.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { clamp } from './utils.js';
 import { assertConfigCompleteness } from './config/guards.js';
@@ -94,6 +94,78 @@ function setFollowMode(enabled) {
   renderScreen();
 }
 
+const WEATHER_ICONS = Object.freeze({
+  Rain: '☔',
+  Storm: '⛈',
+  Snow: '❄️',
+  Frost: '🧊',
+  Hot: '🔥',
+  Drought: '🌵',
+  Overcast: '☁️',
+  Chill: '💨',
+  Fair: '☀️',
+});
+
+function iconForWeather(label) {
+  return WEATHER_ICONS[label] || WEATHER_ICONS.Fair;
+}
+
+function formatTemperature(tempC) {
+  if (!Number.isFinite(tempC)) return '—';
+  return `${Math.round(tempC)}°C`;
+}
+
+function formatPrecip(rainMm) {
+  if (!Number.isFinite(rainMm)) return '0.0 mm';
+  return `${rainMm.toFixed(1)} mm`;
+}
+
+function updateWeatherHud() {
+  const weather = state.world?.weather;
+  if (!weather) return;
+  const icon = iconForWeather(weather.label);
+  const temp = formatTemperature(weather.tempC);
+  const rain = formatPrecip(weather.rain_mm);
+  const humidity = Number.isFinite(weather.humidity)
+    ? `${Math.round(weather.humidity * 100)}% RH`
+    : null;
+  const hudParts = [`${icon} ${weather.label}`];
+  hudParts.push(temp);
+  hudParts.push(rain);
+  if (humidity) hudParts.push(humidity);
+  if (DOM.hudWeather) DOM.hudWeather.textContent = hudParts.join(' • ');
+  if (DOM.weatherIcon) DOM.weatherIcon.textContent = icon;
+  if (DOM.weatherLabel) DOM.weatherLabel.textContent = weather.label || 'Fair';
+  if (DOM.weatherDetails) {
+    const detail = humidity ? `${temp} • ${rain} • ${humidity}` : `${temp} • ${rain}`;
+    DOM.weatherDetails.textContent = detail;
+  }
+}
+
+function applyAtmosphereLighting() {
+  const container = DOM.screenContainer;
+  const world = state.world;
+  if (!container || !world) return;
+  const minute = world.calendar?.minute ?? 0;
+  const t = MINUTES_PER_DAY > 0 ? (minute % MINUTES_PER_DAY) / MINUTES_PER_DAY : 0;
+  const diurnal = Math.sin((t - 0.25) * Math.PI * 2) * 0.5 + 0.5;
+  const daylightHours = world.daylight?.dayLenHours ?? 12;
+  const daylightBoost = clamp(daylightHours / 16, 0.6, 1.1);
+  const weatherLight = clamp(world.weather?.lightLevel ?? 0.75, 0.2, 1);
+  const brightness = clamp(0.22 + diurnal * 0.58 * daylightBoost + (weatherLight - 0.6) * 0.4, 0.18, 1);
+  const cloud = clamp(world.weather?.cloudCover ?? 0.28, 0, 1);
+  const baseHue = Number.isFinite(world.weather?.skyHue)
+    ? world.weather.skyHue
+    : (world.weather?.label === 'Hot' ? 48 : 210);
+  const saturation = clamp(0.42 + (weatherLight - 0.5) * 0.18 - cloud * 0.12, 0.28, 0.65);
+  const sunGlow = clamp((world.weather?.sunGlow ?? 0.4) * (0.6 + diurnal * 0.7), 0.1, 0.95);
+  container.style.setProperty('--sky-hue', baseHue.toFixed(1));
+  container.style.setProperty('--sky-saturation', saturation.toFixed(3));
+  container.style.setProperty('--sky-brightness', brightness.toFixed(3));
+  container.style.setProperty('--sky-cloud', cloud.toFixed(3));
+  container.style.setProperty('--sun-glow', sunGlow.toFixed(3));
+}
+
 function isTextInput(element) {
   if (!element) return false;
   if (element.isContentEditable) return true;
@@ -130,6 +202,11 @@ function selectDom() {
   DOM.hudDate = document.getElementById('hud-date');
   DOM.hudTime = document.getElementById('hud-time');
   DOM.hudLabour = document.getElementById('hud-labour');
+  DOM.hudWeather = document.getElementById('hud-weather');
+  DOM.screenContainer = document.getElementById('screen-container');
+  DOM.weatherIcon = document.getElementById('weather-icon');
+  DOM.weatherLabel = document.getElementById('weather-label');
+  DOM.weatherDetails = document.getElementById('weather-details');
 }
 
 function initEvents() {
@@ -281,10 +358,12 @@ function renderHud() {
   const usage = getLabourUsage();
   const labourLabel = `Labour: ${usage.used.toFixed(1)} / ${usage.budget} h`;
   if (DOM.hudLabour) DOM.hudLabour.textContent = labourLabel;
+  updateWeatherHud();
 }
 
 function renderScreen() {
   if (!DOM.screen || !state.world) return;
+  applyAtmosphereLighting();
   const { buf, styleBuf } = renderColored(state.world);
   if (!Array.isArray(buf)) {
     DOM.screen.innerHTML = '';
@@ -424,6 +503,24 @@ function renderInventoryPanel() {
   `;
 }
 
+function describeSoilStatus(parcel) {
+  if (!parcel) return '—';
+  const moisture = Number.isFinite(parcel.soil?.moisture)
+    ? `${Math.round(parcel.soil.moisture * 100)}%`
+    : null;
+  const nitrogen = Number.isFinite(parcel.soil?.nitrogen)
+    ? `${Math.round(parcel.soil.nitrogen * 100)}%`
+    : null;
+  const drought = parcel.status?.droughtStress ?? 0;
+  const flood = parcel.status?.waterlogging ?? 0;
+  const tags = [];
+  if (moisture) tags.push(`Moist ${moisture}`);
+  if (nitrogen) tags.push(`N ${nitrogen}`);
+  if (drought > 0.35) tags.push('Dry stress');
+  if (flood > 0.35) tags.push('Waterlogged');
+  return tags.length ? tags.join(' • ') : '—';
+}
+
 function renderParcelsPanel() {
   const parcels = Array.isArray(state.world.parcels) ? state.world.parcels : [];
   const monthIndex = state.world.calendar?.monthIndex ?? 0;
@@ -437,7 +534,8 @@ function renderParcelsPanel() {
     .map((parcel) => (
       `<tr><th scope="row">${escapeHtml(labelFor(parcel, monthIndex))}</th>` +
       `<td>${escapeHtml(stageLabel(parcel))}</td>` +
-      `<td>${escapeHtml(parcel.phase ?? '—')}</td></tr>`
+      `<td>${escapeHtml(parcel.phase ?? '—')}</td>` +
+      `<td>${escapeHtml(describeSoilStatus(parcel))}</td></tr>`
     ))
     .join('');
   const closeRows = parcels
@@ -445,15 +543,16 @@ function renderParcelsPanel() {
     .map((parcel) => (
       `<tr><th scope="row">${escapeHtml(labelFor(parcel, monthIndex))}</th>` +
       `<td>${escapeHtml(stageLabel(parcel))}</td>` +
-      `<td>${escapeHtml(parcel.phase ?? '—')}</td></tr>`
+      `<td>${escapeHtml(parcel.phase ?? '—')}</td>` +
+      `<td>${escapeHtml(describeSoilStatus(parcel))}</td></tr>`
     ))
     .join('');
   return `
     <section>
       <h2>Fields</h2>
-      <table class="panel-table"><thead><tr><th>Field</th><th>Stage</th><th>Phase</th></tr></thead><tbody>${fieldRows}</tbody></table>
+      <table class="panel-table"><thead><tr><th>Field</th><th>Stage</th><th>Phase</th><th>Soil</th></tr></thead><tbody>${fieldRows}</tbody></table>
       <h2>Closes</h2>
-      <table class="panel-table"><thead><tr><th>Close</th><th>Stage</th><th>Phase</th></tr></thead><tbody>${closeRows}</tbody></table>
+      <table class="panel-table"><thead><tr><th>Close</th><th>Stage</th><th>Phase</th><th>Soil</th></tr></thead><tbody>${closeRows}</tbody></table>
     </section>
   `;
 }

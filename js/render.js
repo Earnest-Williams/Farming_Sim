@@ -53,6 +53,63 @@ export function flushLine(chars, styles) {
   return html;
 }
 
+function weatherIcon(label) {
+  switch (label) {
+    case 'Rain':
+      return '☔';
+    case 'Storm':
+      return '⛈';
+    case 'Snow':
+      return '❄';
+    case 'Frost':
+      return '🧊';
+    case 'Hot':
+      return '🔥';
+    case 'Drought':
+      return '🌵';
+    case 'Overcast':
+      return '☁';
+    case 'Chill':
+      return '💨';
+    default:
+      return '☀';
+  }
+}
+
+function weatherSid(label) {
+  switch (label) {
+    case 'Rain':
+      return SID.W_RAIN;
+    case 'Storm':
+      return SID.W_STORM;
+    case 'Hot':
+    case 'Drought':
+      return SID.W_HOT;
+    case 'Snow':
+    case 'Frost':
+      return SID.W_SNOW;
+    default:
+      return SID.HUD_TEXT;
+  }
+}
+
+function drawWeatherSummary(buf, styleBuf, world) {
+  const weather = world.weather;
+  if (!weather) return;
+  const icon = weatherIcon(weather.label);
+  const sid = weatherSid(weather.label);
+  const temp = Number.isFinite(weather.tempC) ? `${Math.round(weather.tempC)}°C` : '';
+  const rain = Number.isFinite(weather.rain_mm) && weather.rain_mm > 0.05 ? `${weather.rain_mm.toFixed(1)}mm` : '';
+  const humidity = Number.isFinite(weather.humidity) ? `${Math.round(weather.humidity * 100)}%` : '';
+  const parts = [icon, weather.label];
+  if (temp) parts.push(temp);
+  if (rain) parts.push(rain);
+  if (humidity) parts.push(humidity);
+  const text = parts.join(' ');
+  const x = Math.max(0, SCREEN_W - Math.min(SCREEN_W, text.length + 2));
+  label(buf, styleBuf, x, 1, text, sid);
+}
+
 export function renderColored(world, debugState = {}) {
   const targetX = clamp(world.farmer.x - SCREEN_W / 2, 0, CONFIG.WORLD.W - SCREEN_W);
   const targetY = clamp(world.farmer.y - SCREEN_H / 2, 0, CONFIG.WORLD.H - SCREEN_H);
@@ -75,10 +132,13 @@ export function renderColored(world, debugState = {}) {
   const avgMoisture = world.parcels.reduce((a, p) => a + p.soil.moisture, 0) / world.parcels.length;
   const s = seasonOfMonth(world.calendar.month);
   const bias = (s === 'Summer' ? +0.08 : s === 'Winter' ? -0.08 : 0);
+  const brightness = clamp(world.weather?.lightLevel ?? 0.7, 0.2, 1);
+  const drynessTilt = clamp(-0.012 * Math.max(0, (world.weather?.dryStreakDays ?? 0) - 3), -0.16, 0);
+  const lightOffset = (brightness - 0.65) * 0.35;
   for (let y = 0; y < SCREEN_H; y++) {
     for (let x = 0; x < SCREEN_W; x++) {
       const tileJitter = (hash01(x + camX, y + camY, world.seed) - 0.5) * 0.1;
-      const v = clamp(avgMoisture + bias + tileJitter, 0, 1);
+      const v = clamp(avgMoisture + bias + tileJitter + drynessTilt + lightOffset, 0, 1);
       const sid = v < 0.30 ? SID.GRASS_DRY : v < 0.55 ? SID.GRASS_NORMAL : v < 0.80 ? SID.GRASS_LUSH : SID.GRASS_VERY_LUSH;
       putStyled(buf, styleBuf, x, y, GRASS_GLYPHS[sid] || '.', sid);
     }
@@ -144,6 +204,8 @@ export function renderColored(world, debugState = {}) {
     const pSX = p.x - camX;
     const pSY = p.y - camY;
     if (pSX + p.w < 0 || pSX > SCREEN_W || pSY + p.h < 0 || pSY > SCREEN_H) continue;
+    const drought = clamp(p.status?.droughtStress ?? 0, 0, 1);
+    const flood = clamp(p.status?.waterlogging ?? 0, 0, 1);
     for (let i = 1; i < p.w - 1; i++) {
       putStyled(buf, styleBuf, pSX + i, pSY, '-', SID.BORDER);
       putStyled(buf, styleBuf, pSX + i, pSY + p.h - 1, '-', SID.BORDER);
@@ -157,6 +219,12 @@ export function renderColored(world, debugState = {}) {
     putStyled(buf, styleBuf, pSX, pSY + p.h - 1, '+', SID.BORDER);
     putStyled(buf, styleBuf, pSX + p.w - 1, pSY + p.h - 1, '+', SID.BORDER);
     label(buf, styleBuf, pSX + 2, pSY, pLabel, SID.MIXED_LABEL);
+    if (drought > 0.38) {
+      label(buf, styleBuf, pSX + 2, pSY + 1, 'dry', SID.W_HOT);
+    }
+    if (flood > 0.38) {
+      label(buf, styleBuf, pSX + 2, pSY + p.h - 2, 'wet', SID.W_RAIN);
+    }
     if (p.kind === 'coppice') {
       const startY = Math.max(p.y + 1, camY);
       const endY = Math.min(p.y + p.h - 1, camY + SCREEN_H);
@@ -199,6 +267,17 @@ export function renderColored(world, debugState = {}) {
             if (row._irrigatedOn && isToday(row._irrigatedOn, world)) {
               if (hash01(xx, yy, 0x9e3779b1 ^ world.seed ^ world.calendar.day) < 0.07) finalSid = SID.WELL_WATER;
             }
+            if (flood > 0.45 && stage < 5) {
+              finalGlyph = '~';
+              finalSid = SID.WELL_WATER;
+            } else if (drought > 0.55 && stage < 5) {
+              finalGlyph = '·';
+              finalSid = SID.GRASS_DRY;
+            }
+            if (row.frostScorch && row.frostScorch > 0.25 && stage < 5) {
+              finalGlyph = '*';
+              finalSid = SID.W_SNOW;
+            }
             putStyled(buf, styleBuf, xx - camX, yy - camY, finalGlyph, finalSid);
           }
         }
@@ -206,6 +285,7 @@ export function renderColored(world, debugState = {}) {
     }
   }
   drawFarmer(buf, styleBuf, world, camX, camY);
+  drawWeatherSummary(buf, styleBuf, world);
   debugHUD(buf, styleBuf, world, debugState);
   return { buf, styleBuf };
 }
