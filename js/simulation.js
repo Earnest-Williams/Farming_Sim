@@ -43,6 +43,7 @@ import { autosave } from './persistence.js';
 import { MINUTES_PER_DAY, computeDaylightByIndex, dayIndex } from './time.js';
 import { generateWeatherToday, dailyWeatherEvents } from './weather.js';
 import { ANIMALS, computeDailyNeedsForAnimal } from './config/animals.js';
+import { stepNeighborFarms, neighborsDailyTurn } from './neighbors.js';
 
 export { processFarmerHalfStep } from './tasks.js';
 import { assertNoWorkOutsideWindow } from './tests/invariants.js';
@@ -261,6 +262,8 @@ export function stepOneMinute(world) {
     sendFarmerHome(world);
   }
 
+  stepNeighborFarms(world);
+
   world.calendar.minute = minute + 1;
   if (world.calendar.minute >= MINUTES_PER_DAY) {
     world.calendar.minute = 0;
@@ -430,6 +433,7 @@ export function dailyTurn(world) {
   pastureRegrow(world);
   updateHayCuring(world);
   consumeLivestock(world);
+  neighborsDailyTurn(world);
   midMonthReprioritise(world);
 
   for (const p of world.parcels) {

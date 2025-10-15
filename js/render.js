@@ -93,6 +93,13 @@ function weatherSid(label) {
   }
 }
 
+const NEIGHBOR_PLOT_STYLES = Object.freeze({
+  arable: Object.freeze({ sid: SID.SOIL_FERTILE, glyph: ';' }),
+  pasture: Object.freeze({ sid: SID.GRASS_LUSH, glyph: ',' }),
+  coppice: Object.freeze({ sid: SID.COPPICE_TREE, glyph: 'Y' }),
+  garden: Object.freeze({ sid: SID.SOIL_TILLED, glyph: ':' }),
+});
+
 function drawWeatherSummary(buf, styleBuf, world) {
   const weather = world.weather;
   if (!weather) return;
@@ -144,6 +151,7 @@ export function renderColored(world, debugState = {}) {
     }
   }
   drawRiverAndRoad(buf, styleBuf, camX, camY, world);
+  drawNeighborFarms(buf, styleBuf, camX, camY, world);
   for (const p of world.parcels) {
     if (!p.rows.length) continue;
     const organic = clamp(p.soil?.organic ?? 0.6, 0, 1);
@@ -270,10 +278,135 @@ export function renderColored(world, debugState = {}) {
       }
     }
   }
+  drawNeighborFarmers(buf, styleBuf, world, camX, camY);
   drawFarmer(buf, styleBuf, world, camX, camY);
   drawWeatherSummary(buf, styleBuf, world);
   debugHUD(buf, styleBuf, world, debugState);
   return { buf, styleBuf };
+}
+
+function drawNeighborBuilding(buf, styleBuf, camX, camY, rect, { fillSid, fillGlyph, labelText } = {}) {
+  if (!rect) return;
+  const sx = rect.x - camX;
+  const sy = rect.y - camY;
+  if (sx + rect.w < 0 || sx > SCREEN_W || sy + rect.h < 0 || sy > SCREEN_H) return;
+  for (let y = 0; y < rect.h; y++) {
+    const screenY = sy + y;
+    if (screenY < 0 || screenY >= SCREEN_H) continue;
+    for (let x = 0; x < rect.w; x++) {
+      const screenX = sx + x;
+      if (screenX < 0 || screenX >= SCREEN_W) continue;
+      const borderX = x === 0 || x === rect.w - 1;
+      const borderY = y === 0 || y === rect.h - 1;
+      let ch;
+      let sid;
+      if (borderX || borderY) {
+        if (borderX && borderY) {
+          ch = '+';
+        } else if (borderY) {
+          ch = '=';
+        } else {
+          ch = '|';
+        }
+        sid = SID.HOUSE_WALL;
+      } else {
+        ch = fillGlyph ?? '.';
+        sid = fillSid ?? SID.WOOD_FLOOR;
+      }
+      putStyled(buf, styleBuf, screenX, screenY, ch, sid);
+    }
+  }
+  if (labelText) {
+    const labelX = Math.max(0, Math.min(SCREEN_W - 1, sx + 1));
+    const labelY = Math.max(0, sy - 1);
+    label(buf, styleBuf, labelX, labelY, labelText, SID.HUD_TEXT);
+  }
+}
+
+function drawNeighborPlots(buf, styleBuf, camX, camY, neighbor) {
+  const plots = Array.isArray(neighbor?.plots) ? neighbor.plots : [];
+  for (const plot of plots) {
+    if (!plot || !Number.isFinite(plot.x) || !Number.isFinite(plot.y)) continue;
+    const style = NEIGHBOR_PLOT_STYLES[plot.type] || NEIGHBOR_PLOT_STYLES.arable;
+    const sx = plot.x - camX;
+    const sy = plot.y - camY;
+    const w = Math.max(0, Math.floor(plot.w));
+    const h = Math.max(0, Math.floor(plot.h));
+    if (sx + w < 0 || sx > SCREEN_W || sy + h < 0 || sy > SCREEN_H) continue;
+    if (w >= 3 && h >= 3) {
+      for (let yy = 1; yy < h - 1; yy++) {
+        const screenY = sy + yy;
+        if (screenY < 0 || screenY >= SCREEN_H) continue;
+        for (let xx = 1; xx < w - 1; xx++) {
+          const screenX = sx + xx;
+          if (screenX < 0 || screenX >= SCREEN_W) continue;
+          putStyled(buf, styleBuf, screenX, screenY, style.glyph, style.sid);
+        }
+      }
+    }
+    for (let i = 0; i < w; i++) {
+      const topX = sx + i;
+      const bottomX = sx + i;
+      if (topX >= 0 && topX < SCREEN_W && sy >= 0 && sy < SCREEN_H) putStyled(buf, styleBuf, topX, sy, '-', SID.BORDER);
+      const bottomY = sy + h - 1;
+      if (bottomX >= 0 && bottomX < SCREEN_W && bottomY >= 0 && bottomY < SCREEN_H) {
+        putStyled(buf, styleBuf, bottomX, bottomY, '-', SID.BORDER);
+      }
+    }
+    for (let i = 0; i < h; i++) {
+      const leftY = sy + i;
+      const rightY = sy + i;
+      if (sx >= 0 && sx < SCREEN_W && leftY >= 0 && leftY < SCREEN_H) putStyled(buf, styleBuf, sx, leftY, '|', SID.BORDER);
+      const rightX = sx + w - 1;
+      if (rightX >= 0 && rightX < SCREEN_W && rightY >= 0 && rightY < SCREEN_H) {
+        putStyled(buf, styleBuf, rightX, rightY, '|', SID.BORDER);
+      }
+    }
+    if (plot.name) {
+      const labelX = Math.max(0, Math.min(SCREEN_W - 1, sx + 1));
+      const labelY = Math.max(0, sy + Math.floor(h / 2));
+      label(buf, styleBuf, labelX, labelY, `[${plot.name}]`, SID.HUD_TEXT);
+    }
+  }
+}
+
+function drawNeighborFarms(buf, styleBuf, camX, camY, world) {
+  const neighbors = Array.isArray(world?.neighbors) ? world.neighbors : [];
+  for (const neighbor of neighbors) {
+    drawNeighborPlots(buf, styleBuf, camX, camY, neighbor);
+    drawNeighborBuilding(buf, styleBuf, camX, camY, neighbor?.barn, { fillSid: SID.BYRE_FLOOR, fillGlyph: '#', labelText: 'BYRE' });
+    drawNeighborBuilding(buf, styleBuf, camX, camY, neighbor?.farmhouse, {
+      fillSid: SID.WOOD_FLOOR,
+      fillGlyph: '.',
+      labelText: neighbor?.name || null,
+    });
+    const well = neighbor?.well;
+    if (well) {
+      const wx = Math.round(well.x) - camX;
+      const wy = Math.round(well.y) - camY;
+      if (wx >= -2 && wx <= SCREEN_W && wy >= 0 && wy < SCREEN_H) {
+        putStyled(buf, styleBuf, wx, wy, 'O', SID.WELL_WATER);
+        label(buf, styleBuf, wx - 2, wy + 1, 'WELL', SID.WELL_TEXT);
+      }
+    }
+  }
+}
+
+function drawNeighborFarmers(buf, styleBuf, world, camX, camY) {
+  const neighbors = Array.isArray(world?.neighbors) ? world.neighbors : [];
+  for (const neighbor of neighbors) {
+    const farmer = neighbor?.farmer;
+    if (!farmer) continue;
+    const px = Math.round(farmer.x) - camX;
+    const py = Math.round(farmer.y) - camY;
+    if (px < 0 || px >= SCREEN_W || py < 0 || py >= SCREEN_H) continue;
+    putStyled(buf, styleBuf, px, py, '&', SID.NEIGHBOR_FARMER);
+    if (farmer.task) {
+      const labelX = Math.min(SCREEN_W - 1, Math.max(0, px + 1));
+      const labelY = Math.max(0, py - 1);
+      label(buf, styleBuf, labelX, labelY, farmer.task, SID.HUD_TEXT);
+    }
+  }
 }
 
 function drawFarmer(buf, styleBuf, world, camX, camY) {

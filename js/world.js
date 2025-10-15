@@ -21,6 +21,7 @@ import {
 import { findParcelMeta } from './estate.js';
 import { makeRng } from './utils.js';
 import { createGrid } from './pathfinding.js';
+import { createNeighborStates, syncNeighborsToTime } from './neighbors.js';
 
 export const SCREEN_W = CONFIG.SCREEN.W;
 export const SCREEN_H = CONFIG.SCREEN.H;
@@ -377,6 +378,7 @@ export function cloneWorld(world) {
     copy.parcels = [];
   }
   copy.parcelByKey = { ...(world.parcelByKey ?? {}) };
+  copy.neighbors = Array.isArray(world.neighbors) ? clone(world.neighbors) : [];
   if (world.camera) copy.camera = { ...world.camera };
   if (world.farmer) {
     copy.farmer = {
@@ -705,6 +707,7 @@ export function makeWorld(seed = 12345) {
     storeSheavesHistory: [],
     cash: 18,
     advisor: { enabled: true, mode: 'auto' },
+    neighbors: createNeighborStates(),
   };
 
   const yardLocation = { ...FARMHOUSE };
@@ -745,6 +748,7 @@ export function makeWorld(seed = 12345) {
   world.closes = Object.values(closeLookup);
 
   world.pathGrid = createGrid(world);
+  syncNeighborsToTime(world);
   kpiInit(world);
   return world;
 }
