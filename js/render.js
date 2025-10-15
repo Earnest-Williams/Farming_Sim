@@ -528,9 +528,16 @@ function drawFarmhouseInterior(buf, styleBuf, camX, camY) {
 
 function drawRiverAndRoad(buf, styleBuf, camX, camY, world) {
   const baseX = 90;
-  const riverHalfWidth = 3;
-  const roadOffset = 6;
-  const roadHalfWidth = 1;
+  const riverHalfWidth = 5;
+  const roadOffset = 7;
+  const roadHalfWidth = 2;
+  const timestamp =
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : typeof Date !== 'undefined' && typeof Date.now === 'function'
+        ? Date.now()
+        : 0;
+  const rippleTime = timestamp * 0.001;
   for (let sy = 0; sy < SCREEN_H; sy++) {
     const worldY = sy + camY;
     if (worldY < 0 || worldY >= CONFIG.WORLD.H) continue;
@@ -543,7 +550,8 @@ function drawRiverAndRoad(buf, styleBuf, camX, camY, world) {
       const worldX = centerX + dx;
       const sx = worldX - camX;
       if (sx < 0 || sx >= SCREEN_W) continue;
-      const ch = '~';
+      const ripple = Math.sin(rippleTime * 0.9 + worldY * 0.18 + dx * 0.45 + world.seed * 0.001);
+      const ch = ripple > 0.25 ? '≈' : ripple < -0.35 ? '∽' : '~';
       putStyled(buf, styleBuf, sx, sy, ch, SID.RIVER);
     }
 
