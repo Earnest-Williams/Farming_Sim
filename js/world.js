@@ -93,7 +93,7 @@ const STORE_SHEAVES_TEMPLATE = freezeDeep(Object.fromEntries(
     .map((plant) => [plant.sheaf.key, 0])
 ));
 
-const DEFAULT_SOIL = Object.freeze({ moisture: 0.55, nitrogen: 0.6 });
+const DEFAULT_SOIL = Object.freeze({ moisture: 0.55, nitrogen: 0.6, organic: 0.62 });
 
 const ROMAN_MONTH_TO_NUMBER = Object.freeze({
   I: 1,
@@ -579,6 +579,7 @@ function createParcelFromTemplate(template, index) {
   const soil = {
     moisture: soilTemplate.moisture ?? DEFAULT_SOIL.moisture,
     nitrogen: soilTemplate.nitrogen ?? DEFAULT_SOIL.nitrogen,
+    organic: soilTemplate.organic ?? DEFAULT_SOIL.organic,
   };
   const statusTemplate = template.status || {};
   const status = {
@@ -586,6 +587,7 @@ function createParcelFromTemplate(template, index) {
     stubble: !!statusTemplate.stubble,
     tilth: statusTemplate.tilth ?? 0,
     mud: 0,
+    soilOrganicTrend: 0,
   };
   const rowsRequested = template.rows != null ? template.rows : ROWS_FOR_ACRES(acres);
   const rowCount = Math.max(0, Math.floor(rowsRequested));

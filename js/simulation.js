@@ -381,6 +381,16 @@ export function updateSoilWaterDaily(world) {
     p.status.droughtStress = droughtStress;
     p.status.waterlogging = waterlogging;
 
+    if (Number.isFinite(p.soil?.organic)) {
+      const rainfallBoost = rain > 0.5 ? Math.min(0.012, rain * 0.0015) : 0;
+      const dryPenalty = dryness >= 4 && rain < 0.4 ? 0.006 * (dryness - 3) : 0;
+      const waterPenalty = waterlogging > 0.5 ? 0.01 * waterlogging : 0;
+      const deltaOrganic = rainfallBoost - dryPenalty - waterPenalty;
+      p.soil.organic = clamp(p.soil.organic + deltaOrganic, 0.05, 1.2);
+      const trend = clamp(((p.status.soilOrganicTrend || 0) + deltaOrganic), -0.1, 0.1);
+      p.status.soilOrganicTrend = trend;
+    }
+
     if (soddenRain && waterlogging > 0.55 && !p.status._waterWarned) {
       world.alerts.push(`${p.name} is waterlogged after the storm.`);
       p.status._waterWarned = true;
@@ -439,11 +449,13 @@ export function dailyTurn(world) {
     const stressFactor = droughtFactor * floodFactor;
     let sumNUse = 0;
     const frostTonight = !!world.weather.frostTonight;
+    let hasCover = false;
     for (const row of p.rows) {
       row.moisture = lerp(row.moisture, p.soil.moisture, 0.5);
       row.weed = clamp01((row.weed || 0) + 0.002);
       const crop = row.crop;
       if (crop) {
+        hasCover = true;
         sumNUse += crop.nUse;
         const baseRate = 1 / (crop.baseDays * (world.daylight.dayLenHours * 60));
         const multiplier = rowGrowthMultiplier(p, row, crop);
@@ -462,6 +474,14 @@ export function dailyTurn(world) {
     const legumeCredit = p.rows.length > 0 ? 0.010 * Math.max(0, sumNUse) / p.rows.length : 0;
     const uptake = p.rows.length > 0 ? 0.006 * Math.max(0, -sumNUse) / p.rows.length : 0;
     p.soil.nitrogen = clamp01(p.soil.nitrogen + baseRecover + legumeCredit - uptake);
+    if (Number.isFinite(p.soil?.organic)) {
+      const coverBonus = hasCover ? 0.004 : (p.status.stubble ? 0.002 : -0.0045);
+      const stressLoss = drought * 0.004 + flood * 0.006;
+      const deltaOrganic = coverBonus - stressLoss;
+      p.soil.organic = clamp(p.soil.organic + deltaOrganic, 0.05, 1.2);
+      const trend = clamp(((p.status.soilOrganicTrend || 0) + deltaOrganic), -0.1, 0.1);
+      p.status.soilOrganicTrend = trend;
+    }
   }
 
   world.calendar.day++;
@@ -526,6 +546,11 @@ export function endOfYear(world) {
     }
     if (p.kind === PARCEL_KIND.ARABLE && p.rotationIndex != null) p.rotationIndex = (p.rotationIndex + 1) % ROTATION.length;
     p.soil.moisture = clamp01(p.soil.moisture + 0.1);
+    if (Number.isFinite(p.soil?.organic)) {
+      p.soil.organic = clamp(p.soil.organic + 0.02, 0.05, 1.2);
+      const trend = clamp(((p.status.soilOrganicTrend || 0) + 0.02), -0.1, 0.1);
+      p.status.soilOrganicTrend = trend;
+    }
   }
   log(world, `Rotation advanced for new year.`);
 }
