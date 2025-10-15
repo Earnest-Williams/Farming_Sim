@@ -1,5 +1,5 @@
 import { clamp, lerp, hash01, isToday, CAMERA_LERP } from './utils.js';
-import { SCREEN_W, SCREEN_H, HOUSE, WELL, BYRE } from './world.js';
+import { SCREEN_W, SCREEN_H, HOUSE, WELL, BYRE, FARMHOUSE_BED } from './world.js';
 import { SID, SID_BY_CROP, CROP_GLYPHS, GRASS_GLYPHS, CONFIG, seasonOfMonth } from './constants.js';
 import { rowBand } from './world.js';
 
@@ -167,56 +167,7 @@ export function renderColored(world, debugState = {}) {
       }
     }
   }
-  const houseSX = HOUSE.x - camX;
-  const houseSY = HOUSE.y - camY;
-  if (houseSX + HOUSE.w >= 0 && houseSX <= SCREEN_W && houseSY + HOUSE.h >= 0 && houseSY <= SCREEN_H) {
-    const roofHeight = Math.max(2, Math.floor(HOUSE.h / 3));
-    const bodyTop = houseSY + roofHeight;
-    const bodyBottom = houseSY + HOUSE.h - 1;
-    const doorWidth = 2;
-    const doorStart = houseSX + Math.floor((HOUSE.w - doorWidth) / 2);
-    const windowRow = bodyTop + Math.max(1, Math.floor((HOUSE.h - roofHeight) / 3));
-    const windowOffsets = [2, HOUSE.w - 3];
-
-    for (let ry = 0; ry < roofHeight; ry++) {
-      const inset = roofHeight - ry - 1;
-      const y = houseSY + ry;
-      for (let x = 0; x < HOUSE.w; x++) {
-        if (x < inset || x >= HOUSE.w - inset) continue;
-        const sx = houseSX + x;
-        const ch = (x === inset ? '/' : x === HOUSE.w - inset - 1 ? '\\' : '^');
-        putStyled(buf, styleBuf, sx, y, ch, SID.HOUSE_WALL);
-      }
-    }
-
-    for (let y = bodyTop; y <= bodyBottom; y++) {
-      for (let x = 0; x < HOUSE.w; x++) {
-        const sx = houseSX + x;
-        if (sx < 0 || sx >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
-        const isLeftWall = x === 0;
-        const isRightWall = x === HOUSE.w - 1;
-        const isTopBeam = y === bodyTop;
-        const isBottomBeam = y === bodyBottom;
-        const isDoor = sx >= doorStart && sx < doorStart + doorWidth;
-        let ch = '#';
-        let sid = SID.HOUSE_WALL;
-        if (isTopBeam) {
-          ch = isLeftWall || isRightWall ? '+' : '=';
-        } else if (isBottomBeam) {
-          ch = isDoor ? ' ' : '_';
-          sid = isDoor ? SID.DOOR : SID.HOUSE_WALL;
-        } else if (isLeftWall || isRightWall) {
-          ch = '|';
-        } else if (y === windowRow && windowOffsets.includes(x)) {
-          ch = 'O';
-        } else if (isDoor && y === bodyBottom - 1) {
-          ch = '|';
-          sid = SID.DOOR;
-        }
-        putStyled(buf, styleBuf, sx, y, ch, sid);
-      }
-    }
-  }
+  drawFarmhouseInterior(buf, styleBuf, camX, camY);
   const byreSX = BYRE.x - camX;
   const byreSY = BYRE.y - camY;
   if (byreSX + BYRE.w >= 0 && byreSX <= SCREEN_W && byreSY + BYRE.h >= 0 && byreSY <= SCREEN_H) {
@@ -335,6 +286,108 @@ function drawFarmer(buf, styleBuf, world, camX, camY) {
     const labelX = Math.min(SCREEN_W - 1, Math.max(0, px + 1));
     const labelY = Math.max(0, py - 1);
     label(buf, styleBuf, labelX, labelY, farmer.task, SID.HUD_TEXT);
+  }
+}
+
+function drawFarmhouseInterior(buf, styleBuf, camX, camY) {
+  const houseSX = HOUSE.x - camX;
+  const houseSY = HOUSE.y - camY;
+  if (houseSX + HOUSE.w < 0 || houseSX > SCREEN_W || houseSY + HOUSE.h < 0 || houseSY > SCREEN_H) return;
+
+  const doorWidth = 2;
+  const doorStart = Math.floor((HOUSE.w - doorWidth) / 2);
+  const bedroomWallX = 7;
+  const bedroomDoorTop = HOUSE.h - 5;
+  const bedroomDoorHeight = 2;
+  const pantryWallY = 3;
+  const pantryDoorWidth = 2;
+  const pantryDoorStart = HOUSE.w - 7;
+  const bedLocal = {
+    x: Math.max(1, Math.min(HOUSE.w - 2, FARMHOUSE_BED.x - HOUSE.x)),
+    y: Math.max(1, Math.min(HOUSE.h - 2, FARMHOUSE_BED.y - HOUSE.y)),
+  };
+
+  for (let y = 0; y < HOUSE.h; y++) {
+    const screenY = houseSY + y;
+    if (screenY < 0 || screenY >= SCREEN_H) continue;
+    for (let x = 0; x < HOUSE.w; x++) {
+      const screenX = houseSX + x;
+      if (screenX < 0 || screenX >= SCREEN_W) continue;
+
+      let ch = '.';
+      let sid = SID.WOOD_FLOOR;
+
+      const borderX = x === 0 || x === HOUSE.w - 1;
+      const borderY = y === 0 || y === HOUSE.h - 1;
+
+      if (borderX || borderY) {
+        const isDoor = y === HOUSE.h - 1 && x >= doorStart && x < doorStart + doorWidth;
+        if (isDoor) {
+          ch = ' ';
+          sid = SID.DOOR;
+        } else if (borderX && borderY) {
+          ch = '+';
+          sid = SID.HOUSE_WALL;
+        } else if (borderY) {
+          ch = '=';
+          sid = SID.HOUSE_WALL;
+        } else {
+          ch = '|';
+          sid = SID.HOUSE_WALL;
+        }
+      } else {
+        if (x === bedroomWallX) {
+          const inDoor = y >= bedroomDoorTop && y < bedroomDoorTop + bedroomDoorHeight;
+          if (inDoor) {
+            ch = ' ';
+            sid = SID.DOOR;
+          } else {
+            ch = '|';
+            sid = SID.HOUSE_WALL;
+          }
+        }
+
+        if (y === pantryWallY && x >= bedroomWallX + 1) {
+          const inDoor = x >= pantryDoorStart && x < pantryDoorStart + pantryDoorWidth;
+          if (inDoor) {
+            ch = ' ';
+            sid = SID.DOOR;
+          } else {
+            ch = '-';
+            sid = SID.HOUSE_WALL;
+          }
+        }
+
+        if (sid === SID.WOOD_FLOOR) {
+          const inBedHead = x >= bedLocal.x - 1 && x <= bedLocal.x + 1 && y >= bedLocal.y - 1 && y <= bedLocal.y;
+          const inBedFoot = x >= bedLocal.x - 1 && x <= bedLocal.x + 1 && y === bedLocal.y + 1;
+          if (inBedHead || inBedFoot) {
+            ch = inBedHead ? 'B' : 'b';
+            sid = SID.BED;
+          } else if (x >= 2 && x <= 3 && y >= HOUSE.h - 4 && y <= HOUSE.h - 3) {
+            ch = 'C';
+            sid = SID.STORAGE;
+          } else if (x >= bedroomWallX - 2 && x <= bedroomWallX - 1 && y >= HOUSE.h - 4 && y <= HOUSE.h - 3) {
+            ch = 'C';
+            sid = SID.STORAGE;
+          } else if (x >= bedroomWallX + 2 && x <= bedroomWallX + 5 && y >= pantryWallY + 3 && y <= pantryWallY + 4) {
+            ch = 'T';
+            sid = SID.TABLE;
+          } else if (x >= HOUSE.w - 4 && x <= HOUSE.w - 2 && y >= 1 && y <= 2) {
+            ch = 'H';
+            sid = SID.HEARTH;
+          } else if (x >= HOUSE.w - 6 && x <= HOUSE.w - 3 && y === pantryWallY - 1) {
+            ch = 'S';
+            sid = SID.STORAGE;
+          } else if (x >= bedroomWallX + 1 && x <= bedroomWallX + 2 && y >= HOUSE.h - 3 && y <= HOUSE.h - 2) {
+            ch = 'T';
+            sid = SID.TABLE;
+          }
+        }
+      }
+
+      putStyled(buf, styleBuf, screenX, screenY, ch, sid);
+    }
   }
 }
 

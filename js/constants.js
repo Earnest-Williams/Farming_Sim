@@ -213,6 +213,10 @@ export const SID = {
   MIXED_LABEL: 200,
   RIVER: 201,
   ROAD: 202,
+  BED: 203,
+  TABLE: 204,
+  HEARTH: 205,
+  STORAGE: 206,
 };
 
 export const SID_BY_CROP = STAGE_SIDS_BY_KEY;

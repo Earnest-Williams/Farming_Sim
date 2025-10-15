@@ -783,6 +783,10 @@ body.hc {
     .hc .s200 { color:#666666 }
     .hc .s201 { color:#0064A7 }
     .hc .s202 { color:#5C4730 }
+    .hc .s203 { color:#004C99 }
+    .hc .s204 { color:#7A4A2A }
+    .hc .s205 { color:#C8501D }
+    .hc .s206 { color:#555555 }
 
     /* --- Color Palette & Styles --- */
     .s0  { color:#556B2F } .s1  { color:#6B8E23 } .s2  { color:#7FBF3F } .s3  { color:#9AD65A }
@@ -800,6 +804,10 @@ body.hc {
     .s200 { color:#94A3B8 }
     .s201 { color:#3FA4DC }
     .s202 { color:#B0854F }
+    .s203 { color:#6FA8FF }
+    .s204 { color:#B37A4C }
+    .s205 { color:#FF7A45 }
+    .s206 { color:#C9B08A }
 
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     .ripe-pulse { animation: pulse 1.5s infinite; text-decoration: underline; }

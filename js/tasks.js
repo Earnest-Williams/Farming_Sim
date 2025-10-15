@@ -2,7 +2,13 @@ import {
   TASK_KINDS,
   WORK_MINUTES,
 } from './constants.js';
-import { updateFieldCrop, updateFieldPhase, moveLivestock, findField } from './world.js';
+import {
+  updateFieldCrop,
+  updateFieldPhase,
+  moveLivestock,
+  findField,
+  FARMHOUSE_BED,
+} from './world.js';
 import { CONFIG_PACK_V1 } from './config/pack_v1.js';
 import { canScheduleMarketTrip } from './jobs/market_trip.js';
 
@@ -415,6 +421,11 @@ export function sendFarmerHome(world) {
   if (!world?.farmer) return;
   world.farmer.queue = [];
   world.farmer.task = null;
+  const bed = world.locations?.bed ?? FARMHOUSE_BED;
+  if (Number.isFinite(bed?.x)) world.farmer.x = Math.round(bed.x);
+  if (Number.isFinite(bed?.y)) world.farmer.y = Math.round(bed.y);
+  if ('pathTarget' in world.farmer) world.farmer.pathTarget = null;
+  if (Array.isArray(world.farmer.path)) world.farmer.path = [];
 }
 
 export function endOfDayMonth(world) {

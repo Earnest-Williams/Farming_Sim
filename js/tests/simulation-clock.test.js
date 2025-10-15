@@ -59,8 +59,17 @@ export function testMovementEtaDeterminism() {
   }
   const travelled = engine.labour.travelSimMin;
   runEngineTick(engine, SIM.STEP_MIN);
-  assert.strictEqual(engine.farmer.pos.x, target.x);
-  assert.strictEqual(engine.farmer.pos.y, target.y);
+  const daylight = world.daylight || { workStart: 0, workEnd: MINUTES_PER_DAY };
+  const minute = world.calendar?.minute ?? 0;
+  const asleep = minute < daylight.workStart || minute >= daylight.workEnd;
+  if (asleep) {
+    const bed = world.locations?.bed ?? { x: start.x, y: start.y };
+    assert.strictEqual(engine.farmer.pos.x, Math.round(bed.x ?? start.x));
+    assert.strictEqual(engine.farmer.pos.y, Math.round(bed.y ?? start.y));
+  } else {
+    assert.strictEqual(engine.farmer.pos.x, target.x);
+    assert.strictEqual(engine.farmer.pos.y, target.y);
+  }
   assert.strictEqual(engine.labour.travelSimMin, travelled);
 }
 
