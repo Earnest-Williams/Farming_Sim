@@ -1,6 +1,7 @@
 import { makeWorld, kpiInit } from './world.js';
 import { createGrid } from './pathfinding.js';
 import { CROPS } from './constants.js';
+import { syncNeighborsToTime } from './neighbors.js';
 
 const SAVE_VERSION = 1;
 
@@ -160,6 +161,7 @@ export function fromSnapshot(snap) {
   world.flexChoice = snap.flexChoice ?? null;
   world.cash = snap.cash ?? 0;
   world.advisor = snap.advisor ?? { enabled: true, mode: 'auto' };
+  syncNeighborsToTime(world);
   world.pathGrid = createGrid(world);
   kpiInit(world);
   return world;

@@ -24,6 +24,7 @@ import {
 } from './scheduler.test.js';
 import { testWrappedJobStatusQueuedAndOverdue, testSkippedJobStatusReported } from './main.test.js';
 import { testMarketTripRetryAfterCanApplyFailure, testFieldWorkReschedulesAfterParcelAppears } from './engine.test.js';
+import { testNeighborFarmPresence, testNeighborChoresAdvance } from './neighbors.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -51,6 +52,8 @@ const tests = [
   ['skipped job status reported', testSkippedJobStatusReported],
   ['market trip retries after canApply failure', testMarketTripRetryAfterCanApplyFailure],
   ['field work reschedules after parcel appears', testFieldWorkReschedulesAfterParcelAppears],
+  ['neighbor farm is present', testNeighborFarmPresence],
+  ['neighbor farmer follows chore schedule', testNeighborChoresAdvance],
 ];
 
 let failed = false;

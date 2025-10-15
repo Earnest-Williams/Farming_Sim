@@ -787,6 +787,7 @@ body.hc {
     .hc .s204 { color:#7A4A2A }
     .hc .s205 { color:#C8501D }
     .hc .s206 { color:#555555 }
+    .hc .s207 { color:#8B3A0E }
 
     /* --- Color Palette & Styles --- */
     .s0  { color:#556B2F } .s1  { color:#6B8E23 } .s2  { color:#7FBF3F } .s3  { color:#9AD65A }
@@ -808,6 +809,7 @@ body.hc {
     .s204 { color:#B37A4C }
     .s205 { color:#FF7A45 }
     .s206 { color:#C9B08A }
+    .s207 { color:#F29F67; font-weight:700 }
 
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     .ripe-pulse { animation: pulse 1.5s infinite; text-decoration: underline; }
