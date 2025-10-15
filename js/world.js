@@ -28,6 +28,13 @@ export const HOUSE = Object.freeze({ ...CONFIG.HOUSE });
 export const BYRE = Object.freeze({ ...CONFIG_PACK_V1.estate.byre });
 export const WELL = Object.freeze({ ...CONFIG.WELL });
 
+const FARMHOUSE_BED_OFFSET = Object.freeze({ x: 3, y: 3 });
+
+export const FARMHOUSE_BED = Object.freeze({
+  x: HOUSE.x + FARMHOUSE_BED_OFFSET.x,
+  y: HOUSE.y + FARMHOUSE_BED_OFFSET.y,
+});
+
 function freezeDeep(value) {
   if (Array.isArray(value)) {
     value.forEach(freezeDeep);
@@ -204,6 +211,10 @@ export function locationPoint(world, key) {
   if (key === 'farmhouse') {
     const yard = world.locations?.yard ?? FARMHOUSE;
     return { x: yard.x ?? 0, y: yard.y ?? 0 };
+  }
+  if (key === 'bed' || key === 'bedroom') {
+    const bed = world.locations?.bed ?? FARMHOUSE_BED;
+    return { x: Math.round(bed.x ?? 0), y: Math.round(bed.y ?? 0) };
   }
   if (key === 'market') {
     const market = world.locations?.market;
@@ -657,8 +668,8 @@ export function makeWorld(seed = 12345) {
     },
     snapCamera: true,
     farmer: {
-      x: HOUSE.x + Math.floor(HOUSE.w / 2),
-      y: HOUSE.y + HOUSE.h - 2,
+      x: FARMHOUSE_BED.x,
+      y: FARMHOUSE_BED.y,
       queue: [],
       task: null,
       activeWork: Array.from({ length: CREW_SLOTS }, () => null),
@@ -704,6 +715,7 @@ export function makeWorld(seed = 12345) {
   world.locations = {
     yard: yardLocation,
     market: marketLocation,
+    bed: { ...FARMHOUSE_BED },
   };
 
   world.fences = [

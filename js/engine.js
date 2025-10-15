@@ -7,6 +7,7 @@ import { TASK_META } from './task_meta.js';
 import { applyResourceDeltas } from './resources.js';
 import { DAYS_PER_MONTH, MAX_SCHEDULED_TASK_ATTEMPTS } from './constants.js';
 import { findPath } from './pathfinding.js';
+import { FARMHOUSE_BED } from './world.js';
 import { log } from './utils.js';
 
 const STEP_COST_DEFAULT = CONFIG_PACK_V1.labour.travelStepSimMin ?? 0.5;
@@ -43,21 +44,28 @@ function ensureProgressStructures(state) {
   }
 }
 
+function bedLocation(world) {
+  const loc = world?.locations?.bed;
+  if (loc && Number.isFinite(loc.x) && Number.isFinite(loc.y)) {
+    return { x: Math.round(loc.x), y: Math.round(loc.y) };
+  }
+  return { x: FARMHOUSE_BED.x, y: FARMHOUSE_BED.y };
+}
+
 function ensureFarmer(state) {
+  const home = bedLocation(state.world);
   if (!state.farmer) {
-    const yard = state.world?.locations?.yard ?? { x: 0, y: 0 };
     state.farmer = {
-      pos: { x: yard.x ?? 0, y: yard.y ?? 0 },
+      pos: { ...home },
       path: [],
       pathTarget: null,
     };
   } else {
     if (!state.farmer.pos) {
-      const yard = state.world?.locations?.yard ?? { x: 0, y: 0 };
-      state.farmer.pos = { x: yard.x ?? 0, y: yard.y ?? 0 };
+      state.farmer.pos = { ...home };
     } else {
-      state.farmer.pos.x = Math.round(state.farmer.pos.x ?? 0);
-      state.farmer.pos.y = Math.round(state.farmer.pos.y ?? 0);
+      state.farmer.pos.x = Math.round(Number.isFinite(state.farmer.pos.x) ? state.farmer.pos.x : home.x);
+      state.farmer.pos.y = Math.round(Number.isFinite(state.farmer.pos.y) ? state.farmer.pos.y : home.y);
     }
     if (!Array.isArray(state.farmer.path)) {
       state.farmer.path = [];
@@ -70,6 +78,27 @@ function ensureFarmer(state) {
     }
   }
   return state.farmer;
+}
+
+function settleFarmerIfSleeping(state) {
+  const world = state.world;
+  if (!world) return;
+  if (state.currentTask) return;
+  const path = state.farmer?.path;
+  if (Array.isArray(path) && path.length > 0) return;
+  const daylight = world.daylight;
+  const minute = world.calendar?.minute ?? 0;
+  const start = Number.isFinite(daylight?.workStart) ? daylight.workStart : 0;
+  const fallbackEnd = CONFIG_PACK_V1.time?.daySimMin ?? 24 * 60;
+  const end = Number.isFinite(daylight?.workEnd) ? daylight.workEnd : fallbackEnd;
+  const outsideWindow = minute < start || minute >= end;
+  if (!outsideWindow) return;
+  const farmer = ensureFarmer(state);
+  const bed = bedLocation(world);
+  farmer.pos.x = bed.x;
+  farmer.pos.y = bed.y;
+  farmer.path = [];
+  farmer.pathTarget = null;
 }
 
 function ensureWorldFarmer(state) {
@@ -432,12 +461,12 @@ function completeTask(state, task) {
 }
 
 export function createEngineState(world) {
-  const yard = world?.locations?.yard ?? { x: 0, y: 0 };
+  const home = bedLocation(world);
   return {
     world,
     currentTask: null,
     farmer: {
-      pos: { x: yard.x ?? 0, y: yard.y ?? 0 },
+      pos: { ...home },
       path: [],
       pathTarget: null,
     },
@@ -501,6 +530,7 @@ export function tick(state, simMin) {
       break;
     }
   }
+  settleFarmerIfSleeping(state);
   syncWorldFarmer(state);
   return consumed;
 }
