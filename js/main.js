@@ -61,6 +61,35 @@ const state = {
 
 const DOM = {};
 
+function isDrawerOpen() {
+  const drawer = DOM.drawer;
+  return !!drawer && !drawer.hasAttribute('hidden');
+}
+
+function syncDrawerToggle() {
+  if (!DOM.menuToggle) return;
+  DOM.menuToggle.setAttribute('aria-expanded', isDrawerOpen() ? 'true' : 'false');
+}
+
+function setDrawerOpen(open) {
+  const drawer = DOM.drawer;
+  if (!drawer) return;
+  if (open) {
+    drawer.removeAttribute('hidden');
+  } else {
+    drawer.setAttribute('hidden', '');
+  }
+  syncDrawerToggle();
+}
+
+function toggleDrawer(force) {
+  if (typeof force === 'boolean') {
+    setDrawerOpen(force);
+    return;
+  }
+  setDrawerOpen(!isDrawerOpen());
+}
+
 const clock = new SimulationClock({
   speedSimMinPerRealMin: SIM.MIN_PER_REAL_MIN,
   stepSimMin: SIM.STEP_MIN,
@@ -170,6 +199,35 @@ function updateWeatherHud() {
   }
 }
 
+function updateLabourProgress(usage) {
+  if (!DOM.labourProgress || !DOM.labourProgressFill || !DOM.labourProgressText) return;
+  const usedValue = Number.isFinite(usage?.used) ? usage.used : 0;
+  const budgetValue = Number.isFinite(usage?.budget) ? usage.budget : 0;
+  const usedLabel = usedValue.toFixed(1);
+  if (budgetValue <= 0) {
+    DOM.labourProgressFill.style.width = '0%';
+    DOM.labourProgressText.textContent = 'No labour budget';
+    DOM.labourProgress.setAttribute('aria-valuenow', usedLabel);
+    DOM.labourProgress.setAttribute('aria-valuemax', '0');
+    DOM.labourProgress.setAttribute('aria-valuetext', 'No labour budget available');
+    DOM.labourProgress.classList.remove('is-warning', 'is-critical');
+    return;
+  }
+  const ratio = usedValue / budgetValue;
+  const bounded = clamp(ratio, 0, 1);
+  const percentLabel = Math.round(clamp(ratio, 0, 2) * 100);
+  DOM.labourProgressFill.style.width = `${(bounded * 100).toFixed(1)}%`;
+  DOM.labourProgressText.textContent = `${percentLabel}% used`;
+  DOM.labourProgress.setAttribute('aria-valuenow', usedLabel);
+  DOM.labourProgress.setAttribute('aria-valuemax', budgetValue.toFixed(0));
+  DOM.labourProgress.setAttribute(
+    'aria-valuetext',
+    `${usedLabel} of ${budgetValue.toFixed(0)} hours used`
+  );
+  DOM.labourProgress.classList.toggle('is-warning', ratio >= 0.75 && ratio < 1);
+  DOM.labourProgress.classList.toggle('is-critical', ratio >= 1);
+}
+
 function applyAtmosphereLighting() {
   const container = DOM.screenContainer;
   const world = state.world;
@@ -238,21 +296,16 @@ function selectDom() {
   DOM.weatherIcon = document.getElementById('weather-icon');
   DOM.weatherLabel = document.getElementById('weather-label');
   DOM.weatherDetails = document.getElementById('weather-details');
+  DOM.labourProgress = document.getElementById('labour-progress');
+  DOM.labourProgressFill = document.getElementById('labour-progress-fill');
+  DOM.labourProgressText = document.getElementById('labour-progress-text');
+  syncDrawerToggle();
 }
 
 function initEvents() {
   if (DOM.menuToggle) {
     DOM.menuToggle.addEventListener('click', () => {
-      const drawer = DOM.drawer;
-      if (!drawer) return;
-
-      const hidden = drawer.hasAttribute('hidden');
-      if (hidden) {
-        drawer.removeAttribute('hidden');
-      } else {
-        drawer.setAttribute('hidden', '');
-      }
-      DOM.menuToggle.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+      toggleDrawer();
     });
   }
 
@@ -268,6 +321,7 @@ function initEvents() {
       const button = ev.target.closest('button[data-panel]');
       if (!button) return;
       setActivePanel(button.dataset.panel);
+      setDrawerOpen(true);
     });
   }
 }
@@ -387,8 +441,11 @@ function renderHud() {
   if (DOM.hudDate) DOM.hudDate.textContent = label;
   if (DOM.hudTime) DOM.hudTime.textContent = time;
   const usage = getLabourUsage();
-  const labourLabel = `Labour: ${usage.used.toFixed(1)} / ${usage.budget} h`;
+  const usedHours = Number.isFinite(usage.used) ? usage.used : 0;
+  const budgetHours = Number.isFinite(usage.budget) ? usage.budget : 0;
+  const labourLabel = `Labour: ${usedHours.toFixed(1)} / ${budgetHours.toFixed(0)} h`;
   if (DOM.hudLabour) DOM.hudLabour.textContent = labourLabel;
+  updateLabourProgress({ used: usedHours, budget: budgetHours });
   updateWeatherHud();
 }
 
@@ -700,9 +757,25 @@ function boot() {
     window.addEventListener('keydown', (ev) => {
       const target = ev.target;
       if (isTextInput(target)) return;
+      const key = ev.key;
+
+      if (key === 'Escape') {
+        if (isDrawerOpen()) {
+          setDrawerOpen(false);
+          ev.preventDefault();
+        }
+        return;
+      }
+
+      if (key === 'm' || key === 'M') {
+        toggleDrawer();
+        ev.preventDefault();
+        return;
+      }
+
       let dx = 0;
       let dy = 0;
-      switch (ev.key) {
+      switch (key) {
         case 'ArrowUp':
         case 'w':
         case 'W':

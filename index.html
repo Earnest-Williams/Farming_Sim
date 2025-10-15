@@ -19,6 +19,20 @@
           <span id="hud-weather">Weather: Fair · 10°C</span>
           <span id="hud-labour">Labour: 0 / 640 h</span>
         </div>
+        <div
+          id="labour-progress"
+          class="hud-progress"
+          role="progressbar"
+          aria-label="Monthly labour usage"
+          aria-valuemin="0"
+          aria-valuemax="640"
+          aria-valuenow="0"
+        >
+          <div class="hud-progress-track">
+            <div id="labour-progress-fill" class="hud-progress-fill"></div>
+          </div>
+          <span id="labour-progress-text" class="hud-progress-text">0% used</span>
+        </div>
       </div>
       <div class="header-actions">
         <button id="follow-toggle" type="button" aria-pressed="true" title="Toggle following the farmer">Following Farmer</button>
