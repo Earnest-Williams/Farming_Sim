@@ -97,6 +97,8 @@ export function dailyWeatherEvents(world) {
     const o = world.parcels[world.parcelByKey.orchard];
     o.status.frostBites = (o.status.frostBites || 0) + 1;
   }
+  const random = typeof world?.rng === 'function' ? world.rng : Math.random;
+
   if (m >= 3 && m <= 5 && w.wind_ms >= 10) {
     const hit = [];
     for (const key of ['barley_clover', 'oats_close', 'pulses', 'flex', 'wheat']) {
@@ -104,7 +106,11 @@ export function dailyWeatherEvents(world) {
       if (!p || !p.rows?.length) continue;
       const matureish = p.rows.some(r => r.crop && r.growth > 0.6);
       if (matureish && (p.status.mud || 0) > 0.2) {
-        p.status.lodgingPenalty = Math.max(p.status.lodgingPenalty || 0, 0.08 + 0.04 * Math.random());
+        const roll = random();
+        p.status.lodgingPenalty = Math.max(
+          p.status.lodgingPenalty || 0,
+          0.08 + 0.04 * roll,
+        );
         hit.push(p.name);
       }
     }

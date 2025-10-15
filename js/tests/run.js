@@ -25,6 +25,7 @@ import {
 import { testWrappedJobStatusQueuedAndOverdue, testSkippedJobStatusReported } from './main.test.js';
 import { testMarketTripRetryAfterCanApplyFailure, testFieldWorkReschedulesAfterParcelAppears } from './engine.test.js';
 import { testNeighborFarmPresence, testNeighborChoresAdvance } from './neighbors.test.js';
+import { testWeatherUsesWorldRng } from './weather.test.js';
 
 const tests = [
   ['config close field within steps', assertCloseFieldWithinSteps],
@@ -54,6 +55,7 @@ const tests = [
   ['field work reschedules after parcel appears', testFieldWorkReschedulesAfterParcelAppears],
   ['neighbor farm is present', testNeighborFarmPresence],
   ['neighbor farmer follows chore schedule', testNeighborChoresAdvance],
+  ['weather events use world rng', testWeatherUsesWorldRng],
 ];
 
 let failed = false;
