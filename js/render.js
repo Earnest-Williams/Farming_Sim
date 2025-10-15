@@ -98,6 +98,8 @@ const NEIGHBOR_PLOT_STYLES = Object.freeze({
   pasture: Object.freeze({ sid: SID.GRASS_LUSH, glyph: ',' }),
   coppice: Object.freeze({ sid: SID.COPPICE_TREE, glyph: 'Y' }),
   garden: Object.freeze({ sid: SID.SOIL_TILLED, glyph: ':' }),
+  orchard: Object.freeze({ sid: SID.COPPICE_TREE, glyph: 'Y' }),
+  meadow: Object.freeze({ sid: SID.GRASS_NORMAL, glyph: ',' }),
 });
 
 function drawWeatherSummary(buf, styleBuf, world) {
