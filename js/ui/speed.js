@@ -13,11 +13,23 @@ let slider;
 let label;
 let buttons;
 
+function updateActiveButton(speed = getSpeed()) {
+  if (!buttons) return;
+  const current = Number.isFinite(speed) ? speed : 0;
+  buttons.forEach((btn) => {
+    const value = parseFloat(btn.dataset.speed);
+    const isMatch = Number.isFinite(value) && Math.abs(value - current) < 0.0001;
+    btn.classList.toggle('active', isMatch);
+    btn.setAttribute('aria-pressed', isMatch ? 'true' : 'false');
+  });
+}
+
 export function syncSpeedControls() {
   if (!slider || !label) return;
   slider.value = String(getSpeed());
   if (slider.value !== '0') slider.dataset.prev = slider.value;
   label.textContent = `${getSpeed().toFixed(2)}× min/s`;
+  updateActiveButton();
 }
 
 export function initSpeedControls() {
@@ -34,9 +46,11 @@ export function initSpeedControls() {
     setSpeed(parseFloat(slider.value));
     if (slider.value !== '0') slider.dataset.prev = slider.value;
     updateLabel();
+    updateActiveButton(parseFloat(slider.value));
   });
 
   buttons.forEach((btn) => {
+    btn.setAttribute('aria-pressed', 'false');
     btn.addEventListener('click', () => {
       const value = parseFloat(btn.dataset.speed);
       if (!Number.isFinite(value)) return;
@@ -44,6 +58,7 @@ export function initSpeedControls() {
       slider.value = String(value);
       if (value > 0) slider.dataset.prev = String(value);
       updateLabel();
+      updateActiveButton(value);
     });
   });
 
@@ -61,6 +76,7 @@ export function initSpeedControls() {
         slider.value = '0';
       }
       updateLabel();
+      updateActiveButton(getSpeed());
       e.preventDefault();
     }
     if (KEY_PRESETS[e.code] != null) {
@@ -69,6 +85,7 @@ export function initSpeedControls() {
       slider.value = String(value);
       slider.dataset.prev = String(value);
       updateLabel();
+      updateActiveButton(value);
     }
   });
 

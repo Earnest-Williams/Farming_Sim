@@ -89,6 +89,55 @@ body {
   box-shadow: 0 10px 24px color-mix(in srgb, var(--border) 65%, transparent);
 }
 
+.hud-progress {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.45);
+}
+
+.hud-progress-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.hud-progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, white 20%));
+  transition: width 200ms ease, background 200ms ease, filter 200ms ease;
+}
+
+.hud-progress-text {
+  font-size: 12px;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.hud-progress.is-warning .hud-progress-fill {
+  background: linear-gradient(90deg, #fbbf24, #f97316);
+}
+
+.hud-progress.is-critical .hud-progress-fill {
+  background: linear-gradient(90deg, #f87171, #ef4444);
+  filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.45));
+}
+
+.hud-progress.is-critical {
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
 #hud-date::before,
 #hud-time::before,
 #hud-labour::before {
@@ -561,6 +610,13 @@ button:focus-visible {
 #speed-controls button {
   flex: 1 1 auto;
   padding: 4px 8px;
+}
+
+#speed-controls button.active {
+  background: color-mix(in srgb, var(--accent) 35%, rgba(30, 41, 59, 0.85));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--fg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .drawer[hidden] {
