@@ -7,6 +7,8 @@
   --panel: #111827;
   --border: #1f2937;
   --message-bg: rgba(15, 23, 42, 0.85);
+  --soil-health: 0.6;
+  --soil-stress: 0.2;
 }
 
 html, body { height: 100%; }
@@ -166,6 +168,8 @@ button:focus-visible {
   --sky-brightness: 0.62;
   --sky-cloud: 0.28;
   --sun-glow: 0.4;
+  --soil-health: 0.6;
+  --soil-stress: 0.2;
   background: linear-gradient(
       180deg,
       hsl(calc(var(--sky-hue) * 1deg) calc(var(--sky-saturation) * 100%)
@@ -288,11 +292,60 @@ button:focus-visible {
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.3);
   backdrop-filter: blur(2.5px) saturate(120%);
   border-radius: 12px;
+  position: relative;
+  z-index: 0;
 }
 
 .screen-row {
   line-height: 1.04;
   letter-spacing: 0.02em;
+  position: relative;
+  z-index: 1;
+}
+
+#screen::before,
+#screen::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  transition: opacity 0.6s ease, filter 0.6s ease;
+}
+
+#screen::before {
+  inset: 0;
+  background:
+    radial-gradient(
+      140% 110% at 30% 90%,
+      rgba(132, 94, 52, clamp(0, 0.28 + (0.8 - var(--soil-health)) * 0.6, 0.55)),
+      transparent 70%
+    ),
+    radial-gradient(
+      110% 70% at 85% 5%,
+      rgba(86, 126, 168, clamp(0, var(--soil-stress) * 0.4, 0.35)),
+      transparent 70%
+    );
+  mix-blend-mode: soft-light;
+  opacity: clamp(0.25, 0.35 + (var(--soil-health) * 0.35), 0.8);
+  z-index: 0;
+}
+
+#screen::after {
+  inset: 12px;
+  border-radius: 10px;
+  background:
+    radial-gradient(
+      120% 100% at 48% 95%,
+      rgba(135, 69, 28, clamp(0, var(--soil-stress) * 0.6, 0.55)),
+      transparent 70%
+    ),
+    radial-gradient(
+      120% 120% at 80% 8%,
+      rgba(78, 110, 152, clamp(0, var(--soil-stress) * 0.35, 0.3)),
+      transparent 80%
+    );
+  mix-blend-mode: overlay;
+  opacity: clamp(0, var(--soil-stress) * 0.75, 0.6);
+  z-index: 0;
 }
 
 #atmosphere-overlay {
@@ -712,7 +765,7 @@ body.hc {
 }
     .hc #screen { background: #f0f0f0; border-color: #999; }
     .hc .s0  { color:#6E8B54 } .hc .s1  { color:#7BAA59 } .hc .s2  { color:#8CD05E } .hc .s3  { color:#A1E86A }
-    .hc .s10 { color:#9A7E66 } .hc .s11 { color:#B58D5F } .hc .s12 { color:#A2765A }
+    .hc .s10 { color:#9A7E66 } .hc .s11 { color:#B58D5F } .hc .s12 { color:#A2765A } .hc .s13 { color:#C3A176 } .hc .s14 { color:#7C5F43 }
     .hc .s20 { color:#42f560 } .hc .s21 { color:#42f560 } .hc .s22 { color:#42f560 } .hc .s23 { color:#42f560 } .hc .s24 { color:#42f560 } .hc .s25 { color:#E0C0FF }
     .hc .s30 { color:#9ACD32 } .hc .s31 { color:#ADDF37 } .hc .s32 { color:#C8E84A } .hc .s33 { color:#E5F05D } .hc .s34 { color:#FFF870 }
     .hc .s40 { color:#22dd3c } .hc .s41 { color:#32e04a } .hc .s42 { color:#40e858 } .hc .s43 { color:#4af062 } .hc .s44 { color:#55f86f }
@@ -731,7 +784,7 @@ body.hc {
 
     /* --- Color Palette & Styles --- */
     .s0  { color:#556B2F } .s1  { color:#6B8E23 } .s2  { color:#7FBF3F } .s3  { color:#9AD65A }
-    .s10 { color:#6E4E2E } .s11 { color:#8B5A2B } .s12 { color:#7A4A2A }
+    .s10 { color:#6E4E2E } .s11 { color:#8B5A2B } .s12 { color:#7A4A2A } .s13 { color:#B0833A } .s14 { color:#5F4331 }
     .s20 { color:#55B46B } .s21 { color:#61BC76 } .s22 { color:#6CC482 } .s23 { color:#76CC8C } .s24 { color:#7ED08F } .s25 { color:#C9B4CF }
     .s30 { color:#6BAF4E } .s31 { color:#7FBF3F } .s32 { color:#9BC94A } .s33 { color:#B5CF4A } .s34 { color:#D8C05A }
     .s40 { color:#39B54A } .s41 { color:#49C65A } .s42 { color:#5BD66C } .s43 { color:#5BD66C } .s44 { color:#5BD66C; font-weight: bold; }

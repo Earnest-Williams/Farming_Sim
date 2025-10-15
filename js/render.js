@@ -145,8 +145,21 @@ export function renderColored(world, debugState = {}) {
   }
   for (const p of world.parcels) {
     if (!p.rows.length) continue;
-    let sSid = p.soil.moisture > 0.6 ? SID.SOIL_MOIST : SID.SOIL_UNTILLED;
-    if (isToday(p.status.lastPlantedOn, world)) sSid = SID.SOIL_TILLED;
+    const organic = clamp(p.soil?.organic ?? 0.6, 0, 1);
+    const drought = clamp(p.status?.droughtStress ?? 0, 0, 1);
+    const flood = clamp(p.status?.waterlogging ?? 0, 0, 1);
+    let sSid = SID.SOIL_UNTILLED;
+    if (isToday(p.status.lastPlantedOn, world)) {
+      sSid = SID.SOIL_TILLED;
+    } else if (flood > 0.55) {
+      sSid = SID.SOIL_MOIST;
+    } else if (drought > 0.5 || organic < 0.4) {
+      sSid = SID.SOIL_PARCHED;
+    } else if (organic > 0.72) {
+      sSid = SID.SOIL_FERTILE;
+    } else if (p.soil.moisture > 0.6) {
+      sSid = SID.SOIL_MOIST;
+    }
     for (let y = p.y + 1; y < p.y + p.h - 1; y++) {
       for (let x = p.x + 1; x < p.x + p.w - 1; x++) {
         putStyled(buf, styleBuf, x - camX, y - camY, '.', sSid);

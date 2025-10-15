@@ -110,6 +110,28 @@ function iconForWeather(label) {
   return WEATHER_ICONS[label] || WEATHER_ICONS.Fair;
 }
 
+function computeSoilAverages(world) {
+  const parcels = world?.parcels || [];
+  const arable = parcels.filter((parcel) =>
+    parcel.kind === PARCEL_KIND.ARABLE || parcel.kind === PARCEL_KIND.CLOSE
+  );
+  if (arable.length === 0) {
+    return { organic: 0.6, stress: 0 };
+  }
+  let organicSum = 0;
+  let stressSum = 0;
+  for (const parcel of arable) {
+    organicSum += Number.isFinite(parcel.soil?.organic) ? parcel.soil.organic : 0.6;
+    const drought = clamp(parcel.status?.droughtStress ?? 0, 0, 1);
+    const flood = clamp(parcel.status?.waterlogging ?? 0, 0, 1);
+    stressSum += (drought + flood) / 2;
+  }
+  return {
+    organic: organicSum / arable.length,
+    stress: stressSum / arable.length,
+  };
+}
+
 function formatTemperature(tempC) {
   if (!Number.isFinite(tempC)) return '—';
   return `${Math.round(tempC)}°C`;
@@ -123,6 +145,7 @@ function formatPrecip(rainMm) {
 function updateWeatherHud() {
   const weather = state.world?.weather;
   if (!weather) return;
+  const soil = computeSoilAverages(state.world);
   const icon = iconForWeather(weather.label);
   const temp = formatTemperature(weather.tempC);
   const rain = formatPrecip(weather.rain_mm);
@@ -132,13 +155,18 @@ function updateWeatherHud() {
   const hudParts = [`${icon} ${weather.label}`];
   hudParts.push(temp);
   hudParts.push(rain);
+  const soilHumus = `${Math.round((soil.organic ?? 0.6) * 100)}% humus`;
+  const stressLevel = soil.stress >= 0.6 ? 'strained' : soil.stress >= 0.4 ? 'tense' : 'steady';
+  hudParts.push(`Soil ${soilHumus}`);
   if (humidity) hudParts.push(humidity);
   if (DOM.hudWeather) DOM.hudWeather.textContent = hudParts.join(' • ');
   if (DOM.weatherIcon) DOM.weatherIcon.textContent = icon;
   if (DOM.weatherLabel) DOM.weatherLabel.textContent = weather.label || 'Fair';
   if (DOM.weatherDetails) {
-    const detail = humidity ? `${temp} • ${rain} • ${humidity}` : `${temp} • ${rain}`;
-    DOM.weatherDetails.textContent = detail;
+    const detailParts = [temp, rain];
+    if (humidity) detailParts.push(humidity);
+    detailParts.push(`${soilHumus} • ${stressLevel}`);
+    DOM.weatherDetails.textContent = detailParts.join(' • ');
   }
 }
 
@@ -159,11 +187,14 @@ function applyAtmosphereLighting() {
     : (world.weather?.label === 'Hot' ? 48 : 210);
   const saturation = clamp(0.42 + (weatherLight - 0.5) * 0.18 - cloud * 0.12, 0.28, 0.65);
   const sunGlow = clamp((world.weather?.sunGlow ?? 0.4) * (0.6 + diurnal * 0.7), 0.1, 0.95);
+  const soilAverages = computeSoilAverages(world);
   container.style.setProperty('--sky-hue', baseHue.toFixed(1));
   container.style.setProperty('--sky-saturation', saturation.toFixed(3));
   container.style.setProperty('--sky-brightness', brightness.toFixed(3));
   container.style.setProperty('--sky-cloud', cloud.toFixed(3));
   container.style.setProperty('--sun-glow', sunGlow.toFixed(3));
+  container.style.setProperty('--soil-health', (soilAverages.organic ?? 0.6).toFixed(3));
+  container.style.setProperty('--soil-stress', (soilAverages.stress ?? 0).toFixed(3));
 }
 
 function isTextInput(element) {
@@ -383,6 +414,10 @@ function renderOverviewPanel() {
   const { month, day, year, minute } = state.world.calendar;
   const hours = Math.floor(minute / MINUTES_PER_HOUR);
   const mins = Math.floor(minute % MINUTES_PER_HOUR);
+  const soil = computeSoilAverages(state.world);
+  const humusPct = Math.round((soil.organic ?? 0.6) * 100);
+  const stressPct = Math.round((soil.stress ?? 0) * 100);
+  const stressLabel = soil.stress >= 0.6 ? 'Severe strain' : soil.stress >= 0.4 ? 'Elevated stress' : 'Balanced';
   const statuses = Array.from(state.jobStatus.values());
   const planned = statuses.filter((s) => s === 'queued' || s === 'working').length;
   const completed = statuses.filter((s) => s === 'completed').length;
@@ -402,6 +437,11 @@ function renderOverviewPanel() {
         <div><dt>Daily Capacity</dt><dd>${LABOUR.HOURS_PER_DAY} hours</dd></div>
         <div><dt>Planned Jobs</dt><dd>${planned}</dd></div>
         <div><dt>Completed</dt><dd>${completed}</dd></div>
+      </dl>
+      <h2>Soil Condition</h2>
+      <dl class="detail-list">
+        <div><dt>Humus</dt><dd>${humusPct}%</dd></div>
+        <div><dt>Field stress</dt><dd>${stressLabel} (${stressPct}%)</dd></div>
       </dl>
     </section>
   `;
@@ -511,13 +551,20 @@ function describeSoilStatus(parcel) {
   const nitrogen = Number.isFinite(parcel.soil?.nitrogen)
     ? `${Math.round(parcel.soil.nitrogen * 100)}%`
     : null;
+  const organic = Number.isFinite(parcel.soil?.organic)
+    ? `${Math.round(parcel.soil.organic * 100)}%`
+    : null;
   const drought = parcel.status?.droughtStress ?? 0;
   const flood = parcel.status?.waterlogging ?? 0;
+  const trend = parcel.status?.soilOrganicTrend ?? 0;
   const tags = [];
   if (moisture) tags.push(`Moist ${moisture}`);
   if (nitrogen) tags.push(`N ${nitrogen}`);
+  if (organic) tags.push(`Humus ${organic}`);
   if (drought > 0.35) tags.push('Dry stress');
   if (flood > 0.35) tags.push('Waterlogged');
+  if (trend > 0.01) tags.push('Humus rising');
+  else if (trend < -0.01) tags.push('Humus falling');
   return tags.length ? tags.join(' • ') : '—';
 }
 

@@ -1,4 +1,4 @@
-import { clamp, clamp01, log } from './utils.js';
+import { clamp, clamp01, lerp, log } from './utils.js';
 import {
   OPT_MOIST,
   STRAW_PER_BUSHEL,
@@ -40,7 +40,9 @@ export function rowGrowthMultiplier(parcel, row, crop) {
   const fTilth = 1.0 + 0.30 * clamp01(parcel.status.tilth || 0);
   const fWeed = 1.0 - 0.50 * clamp01(row.weed || 0);
   const fComp = row.companion && row.companion.key === 'CLOVER' && crop.key === 'BARLEY' ? 1.05 : 1.0;
-  return clamp01(fMoist) * fN * fTilth * fWeed * fComp;
+  const organic = clamp01(parcel.soil?.organic ?? 0.6);
+  const fOrganic = lerp(0.75, 1.25, organic);
+  return clamp01(fMoist) * fN * fTilth * fWeed * fComp * fOrganic;
 }
 
 export function estimateParcelYieldBushels(parcel, crop) {
@@ -69,6 +71,10 @@ export function estimateParcelYieldBushelsWithTiming(world, parcel, crop) {
 function ploughParcel(world, p) {
   p.status.tilth = clamp01((p.status.tilth || 0) + 0.35);
   p.status.stubble = false;
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic - 0.01, 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) - 0.01;
+  }
   if (p.rows) {
     for (const r of p.rows) {
       r.weed = clamp01((r.weed || 0) - 0.15);
@@ -87,6 +93,10 @@ function harrowParcel(world, p) {
     }
   }
   p.status.lastHarrowedOn = stamp(world);
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic - 0.005, 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) - 0.005;
+  }
 }
 
 function sowParcelRows(world, p, payload) {
@@ -152,6 +162,10 @@ function harvestParcelToSheaves(world, p) {
   p.status.stubble = true;
   p.status.cropNote = `Stubble (${crop.name} sheaves on field)`;
   p.soil.nitrogen = clamp01(p.soil.nitrogen + (crop.nUse || 0));
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic - 0.015, 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) - 0.015;
+  }
 }
 
 function cartSheaves(world, p) {
@@ -213,12 +227,20 @@ function winnowGrain(world, cropKey) {
 function spreadManure(world, p, nDelta) {
   p.soil.nitrogen = clamp01(p.soil.nitrogen + (nDelta ?? 0.08));
   p.status.cropNote = (p.status.cropNote || '') + ' · manured';
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic + 0.035, 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) + 0.035;
+  }
 }
 
 function foldSheepOn(world, p, days) {
   const credit = 0.02 * (days ?? 10);
   p.soil.nitrogen = clamp01(p.soil.nitrogen + credit);
   p.status.cropNote = 'Folded by sheep (winter)';
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic + Math.min(0.05, credit * 1.5), 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) + Math.min(0.05, credit * 1.5);
+  }
 }
 
 function cutCloverHay(world, p) {
@@ -227,6 +249,10 @@ function cutCloverHay(world, p) {
   p.hayCuring = { mass_t, dryness: 0, loss_t: 0 };
   p.soil.nitrogen = Math.min(1, (p.soil.nitrogen || 0) + 0.05);
   p.status.cropNote = 'Clover cut; curing';
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic - 0.012, 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) - 0.012;
+  }
 }
 
 function cartHay(world, p) {
@@ -236,6 +262,10 @@ function cartHay(world, p) {
   world.store.hay += net;
   p.hayCuring = null;
   p.status.cropNote = 'Clover aftermath';
+  if (Number.isFinite(p.soil?.organic)) {
+    p.soil.organic = clamp(p.soil.organic + 0.006, 0.05, 1.2);
+    p.status.soilOrganicTrend = (p.status.soilOrganicTrend || 0) + 0.006;
+  }
 }
 
 function harvestOrchard(world) {
